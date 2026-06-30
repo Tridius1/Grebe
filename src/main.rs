@@ -83,9 +83,9 @@ pub struct IconPixels {
 }
 
 /// Takes a valid HICON and extracts its raw 32-bit BGRA bitmap pixels using GDI.
-pub fn bytes_from_hicon(poss_hicon: Option<HICON>) -> Option<IconPixels> {
+pub fn bytes_from_hicon(opt_hicon: Option<HICON>) -> Option<IconPixels> {
 
-    let hicon = poss_hicon?;
+    let hicon = opt_hicon?;
 
     unsafe {
         // 1. Extract structural icon info (brings along color & mask HBITMAPs)
@@ -130,7 +130,7 @@ pub fn bytes_from_hicon(poss_hicon: Option<HICON>) -> Option<IconPixels> {
             bmiHeader: BITMAPINFOHEADER {
                 biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
                 biWidth: width,
-                biHeight: -height, // Negative height forces top-down orientation
+                biHeight: -height, // Negative height for top-down orientation
                 biPlanes: 1,
                 biBitCount: 32,    // 4 bytes per pixel: B, G, R, A
                 biCompression: BI_RGB.0,
@@ -185,14 +185,14 @@ impl Drop for ScopeGuard {
 //--------------------------------------------------------------------------------------
 // PRINTING ICONS TO DEBUG
 pub fn display_icon_in_terminal(icon_data: &IconPixels) {
-    // 1. GDI gives us BGRA, but the `image` crate and terminals expect RGBA.
-    // Let's copy and swap the channels.
+    // GDI gives us BGRA, but the image crate and terminals expect RGBA
+    // Copy and swap the channels
     let mut rgba_bytes = icon_data.bgra_bytes.clone();
     for chunk in rgba_bytes.chunks_exact_mut(4) {
         chunk.swap(0, 2); // Swap Blue (0) and Red (2) -> RGBA
     }
 
-    // 2. Convert raw bytes into an ImageBuffer handled by the `image` crate
+    // Convert raw bytes into an ImageBuffer from the image crate
     let width = icon_data.width as u32;
     let height = icon_data.height as u32;
     
@@ -203,7 +203,7 @@ pub fn display_icon_in_terminal(icon_data: &IconPixels) {
     // Convert the buffer into a dynamic image type that viuer uses
     let dynamic_img = image::DynamicImage::ImageRgba8(img_buffer);
 
-    // 3. Configure viuer options for terminal printing
+    // Configure viuer options for terminal printing
     let config = Config {
         // Limit the width in the terminal so a massive icon doesn't blow up your layout
         width: Some(32), 
@@ -216,7 +216,7 @@ pub fn display_icon_in_terminal(icon_data: &IconPixels) {
     };
 
     println!("\n--- Debugging Icon Output ({width}x{height}) ---");
-    // 4. Print it!
+    // Print
     if let Err(e) = print(&dynamic_img, &config) {
         println!("Failed to render image in terminal: {}", e);
     }
@@ -257,11 +257,11 @@ pub fn get_icon_from_pid(pid: u32) -> Option<HICON> {
     if let Some(hwnd) = search.found_hwnd {
         unsafe {
             // Strategy A: Ask the window for its "Large" icon
-            let mut result = SendMessageW(hwnd, WM_GETICON, WPARAM(ICON_BIG as usize), LPARAM(0));
-            if result.0 != 0 { return Some(HICON(result.0)); }
+            //let mut result = SendMessageW(hwnd, WM_GETICON, WPARAM(ICON_BIG as usize), LPARAM(0));
+            //if result.0 != 0 { return Some(HICON(result.0)); }
 
             // Strategy B: Fallback to the "Small" icon 
-            result = SendMessageW(hwnd, WM_GETICON, WPARAM(ICON_SMALL2 as usize), LPARAM(0));
+            let result = SendMessageW(hwnd, WM_GETICON, WPARAM(ICON_SMALL2 as usize), LPARAM(0));
             if result.0 != 0 { return Some(HICON(result.0)); }
 
             // Strategy C: Read the window class fallback icon
@@ -270,7 +270,7 @@ pub fn get_icon_from_pid(pid: u32) -> Option<HICON> {
         }
     }
 
-    // Strategy D: CRITICAL FALLBACK (For Discord/Electron/Spotify)
+    // Strategy D: CRITICAL FALLBACK (for Electron apps; Discord/Spotify)
     // Dig out the executable path from the PID and extract its embedded icon asset.
     get_icon_from_exe_path(pid)
 }
@@ -278,7 +278,7 @@ pub fn get_icon_from_pid(pid: u32) -> Option<HICON> {
 /// Helper function to open a process, get its file path, and extract its icon resource
 fn get_icon_from_exe_path(pid: u32) -> Option<HICON> {
     unsafe {
-        // Open a lightweight handle to the process
+        // Open a handle to the process
         let process_handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
         
         let mut buffer = [0u16; 1024];
@@ -327,7 +327,6 @@ unsafe extern "system" fn enum_window_callback(hwnd: HWND, lparam: LPARAM) -> wi
 
 
 struct VolumeSession {
-    pid: u32,
     name: String,
     icon: Option<IconPixels>,
 }
@@ -340,16 +339,16 @@ fn check_mixer(volumes: &mut BTreeMap<u32, VolumeSession>) -> Result<()>  {
         // Initialize COM library for the current thread
         CoInitializeEx(None, COINIT_MULTITHREADED).ok()?;
 
-        // 1. Get the device enumerator (CoCreateInstance comes from System::Com)
+        // Get the device enumerator (CoCreateInstance comes from System::Com)
         let enumerator: IMMDeviceEnumerator = CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
 
-        // 2. Get the default audio output device (Speakers/Headphones)
+        // Get the default audio output device
         let device = enumerator.GetDefaultAudioEndpoint(eRender, eConsole)?;
 
-        // 3. Get the IAudioSessionManager2 interface from the device
+        // Get the IAudioSessionManager2 interface from the device
         let session_manager: IAudioSessionManager2 = device.Activate(CLSCTX_ALL, None)?;
 
-        // 4. Get the session enumerator
+        // Get the session enumerator
         let session_enumerator = session_manager.GetSessionEnumerator()?;
         let session_count = session_enumerator.GetCount()?;
 
@@ -380,7 +379,6 @@ fn check_mixer(volumes: &mut BTreeMap<u32, VolumeSession>) -> Result<()>  {
             // Check if process is cached, use cache if so otherwise fill cache
             if  !volumes.contains_key(&pid) {
                 volumes.insert(pid, VolumeSession{
-                    pid: pid,
                     name: get_process_name(pid),
                     icon: bytes_from_hicon(get_icon_from_pid(pid))
                 });
@@ -403,7 +401,7 @@ fn check_mixer(volumes: &mut BTreeMap<u32, VolumeSession>) -> Result<()>  {
                 println!("{:<10} {:.0}% {:<80} | {}", pid, volume * 100.0, vol_session.name, has_hicon);
             }
             if vol_session.icon.is_some(){
-                //display_icon_in_terminal( vol_session.icon.as_ref().unwrap() )
+                display_icon_in_terminal( vol_session.icon.as_ref().unwrap() );
             }
             
         }
