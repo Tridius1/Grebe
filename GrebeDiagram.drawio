@@ -1,0 +1,64 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="Page-1" id="yqisMIhx8xdj9ycMdAXR">
+    <mxGraphModel dx="975" dy="518" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="aWUN_2aBAmZsm3dwRGDm-3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="310" width="560" x="160" y="170" as="geometry" />
+        </mxCell>
+        <mxCell id="aWUN_2aBAmZsm3dwRGDm-5" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="&lt;font style=&quot;font-size: 24px;&quot;&gt;Rust Daemon&lt;/font&gt;" vertex="1">
+          <mxGeometry height="50" width="180" x="350" y="180" as="geometry" />
+        </mxCell>
+        <mxCell id="aWUN_2aBAmZsm3dwRGDm-14" edge="1" parent="1" source="aWUN_2aBAmZsm3dwRGDm-6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="aWUN_2aBAmZsm3dwRGDm-8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="aWUN_2aBAmZsm3dwRGDm-6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;div&gt;Serial Reader&lt;/div&gt;&lt;div&gt;Thread&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="120" x="200" y="270" as="geometry" />
+        </mxCell>
+        <mxCell id="aWUN_2aBAmZsm3dwRGDm-21" edge="1" parent="1" source="aWUN_2aBAmZsm3dwRGDm-7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="aWUN_2aBAmZsm3dwRGDm-15">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="aWUN_2aBAmZsm3dwRGDm-7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;div&gt;Serial Writer&lt;/div&gt;&lt;div&gt;Thread&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="120" x="300" y="390" as="geometry" />
+        </mxCell>
+        <mxCell id="aWUN_2aBAmZsm3dwRGDm-12" edge="1" parent="1" source="aWUN_2aBAmZsm3dwRGDm-8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="aWUN_2aBAmZsm3dwRGDm-7">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="420" y="360" />
+              <mxPoint x="360" y="360" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="aWUN_2aBAmZsm3dwRGDm-22" edge="1" parent="1" source="aWUN_2aBAmZsm3dwRGDm-8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="aWUN_2aBAmZsm3dwRGDm-16">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="460" y="570" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="aWUN_2aBAmZsm3dwRGDm-8" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;div&gt;Central&lt;/div&gt;&lt;div&gt;Coordinator&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="120" x="380" y="270" as="geometry" />
+        </mxCell>
+        <mxCell id="aWUN_2aBAmZsm3dwRGDm-13" edge="1" parent="1" source="aWUN_2aBAmZsm3dwRGDm-9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="aWUN_2aBAmZsm3dwRGDm-8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="aWUN_2aBAmZsm3dwRGDm-9" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="Windows Audio Listener" vertex="1">
+          <mxGeometry height="60" width="120" x="560" y="270" as="geometry" />
+        </mxCell>
+        <mxCell id="aWUN_2aBAmZsm3dwRGDm-17" edge="1" parent="1" source="aWUN_2aBAmZsm3dwRGDm-15" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="aWUN_2aBAmZsm3dwRGDm-6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="aWUN_2aBAmZsm3dwRGDm-15" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;div&gt;Arduino&lt;/div&gt;&lt;div&gt;Hardware&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="120" x="200" y="540" as="geometry" />
+        </mxCell>
+        <mxCell id="aWUN_2aBAmZsm3dwRGDm-19" edge="1" parent="1" source="aWUN_2aBAmZsm3dwRGDm-16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="aWUN_2aBAmZsm3dwRGDm-9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="aWUN_2aBAmZsm3dwRGDm-16" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;div&gt;Operating&lt;/div&gt;&lt;div&gt;System&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="120" x="560" y="540" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
