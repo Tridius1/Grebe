@@ -8,6 +8,7 @@ static CONFIG: OnceLock<GrebeConfig> = OnceLock::new();
 #[derive(Debug, Deserialize)]
 pub struct GrebeConfig {
     pub verbose: bool,
+    pub blacklist: Vec<String>,
 }
 
 // Public init function, should only be called once (in main.rs)

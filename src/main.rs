@@ -21,6 +21,8 @@ fn main() {
     };
     Builder::new().filter_level(log_level).init();
 
+    debug!("{:?}", cfg);
+
 
     // Setup crossbeam channels
     // Channel for Audio thread to talk to Coordinator
@@ -30,7 +32,7 @@ fn main() {
     // Spawn threads
     debug!("[Coordinator] Spawning threads");
     // Audio thread
-    let audio_handle = thread::spawn(move || { audio::listener(audio_tx); });
+    let audio_handle = thread::spawn(move || { audio::run_audio_subsystem(audio_tx); });
 
     // Main Loop
     loop {
