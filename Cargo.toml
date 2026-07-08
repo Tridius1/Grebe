@@ -11,6 +11,7 @@ log = "0.4.33"
 serde = { version = "1.0.228", features = ["derive"] }
 serialport = "4.9.0"
 toml = "1.1.2"
+tray-icon = "0.24.1"
 viuer = "0.11.0"
 windows = { version = "0.58", features = [
     "implement",
@@ -25,4 +26,5 @@ windows = { version = "0.58", features = [
 
 ]}
 windows-core = "0.58"
+winit = "0.30.13"
 
