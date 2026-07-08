@@ -1,4 +1,4 @@
 # Main project settings
 verbose = true
 
-blacklist = ["steamwebhelper", "wallpaper64", "SteelSeriesMoments", "SpotifyWidgetProvider"]
+blacklist = ["steamwebhelper", "wallpaper64", "SteelSeriesMoments", "SpotifyWidgetProvider", "GameBar", "DiscordHookHelper"]

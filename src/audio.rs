@@ -56,7 +56,7 @@ fn get_process_name(pid: u32) -> String {
 #[derive(Debug, Clone)]
 pub enum AudioMsg {
     AppOpened { pid: u32, name: String }, // called both during initiliazation and when apps opened while running
-    VolumeChanged { pid: u32, volume: f32 },
+    VolumeChanged { pid: u32, volume: f32, muted: bool },
     AppClosed { pid: u32 },
 }
 
@@ -64,7 +64,7 @@ pub enum AudioMsg {
 // Internal messages (Used localy)
 enum InternalAudioMsg {
     AppOpenedIncoming(IAudioSessionControl),
-    VolumeChanged { pid: u32, volume: f32 },
+    VolumeChanged { pid: u32, volume: f32, muted: bool },
     AppClosed { pid: u32 },
 }
 
@@ -92,16 +92,21 @@ struct AppEventListener {
 }
 
 impl IAudioSessionEvents_Impl for AppEventListener_Impl {
-    fn OnSimpleVolumeChanged(&self, newvolume: f32, muted: BOOL, _context: *const windows::core::GUID) -> windows::core::Result<()> {
-        let _ = if muted.as_bool() {
-            self.tx.send(InternalAudioMsg::VolumeChanged { pid: self.pid, volume: 0.0 }) // Where we pretend muting is the same as 0 volume
-        } else {
-            self.tx.send(InternalAudioMsg::VolumeChanged { pid: self.pid, volume: newvolume })
-        };
+    fn OnSimpleVolumeChanged(&self, newvolume: f32, is_muted: BOOL, _context: *const windows::core::GUID) -> windows::core::Result<()> {
+        // Called when user manually adjusts windows mixer
+        let _ = self.tx.send(InternalAudioMsg::VolumeChanged { pid: self.pid, volume: newvolume, muted: is_muted.as_bool() });
         Ok(())
     }
     fn OnSessionDisconnected(&self, _reason: AudioSessionDisconnectReason) -> windows::core::Result<()> {
+        // Almost never called (oops)
         let _ = self.tx.send(InternalAudioMsg::AppClosed { pid: self.pid });
+        Ok(())
+    }
+    fn OnStateChanged(&self, newstate: AudioSessionState) -> windows::core::Result<()> {
+        // Called when user applications close or crash
+        if newstate == AudioSessionStateExpired {
+            let _ = self.tx.send(InternalAudioMsg::AppClosed { pid: self.pid });
+        }
         Ok(())
     }
     
@@ -110,7 +115,7 @@ impl IAudioSessionEvents_Impl for AppEventListener_Impl {
     fn OnDisplayNameChanged(&self, _: &windows::core::PCWSTR, _: *const windows::core::GUID) -> windows::core::Result<()> { Ok(()) }
     fn OnIconPathChanged(&self, _: &windows::core::PCWSTR, _: *const windows::core::GUID) -> windows::core::Result<()> { Ok(()) }
     fn OnGroupingParamChanged(&self, _: *const windows::core::GUID, _: *const windows::core::GUID) -> windows::core::Result<()> { Ok(()) }
-    fn OnStateChanged(&self, _: AudioSessionState) -> windows::core::Result<()> { Ok(()) }
+    
 }
 
 // ==========================================
@@ -131,14 +136,18 @@ struct AudioStateManager {
 
 impl AudioStateManager {
     pub fn new(to_coordinator: Sender<AudioMsg>) -> Self {
-        let blacklist = config::get().blacklist.clone();
+        let blacklist = config::get().blacklist.clone(); // load blacklist
         Self { sessions: BTreeMap::new(), to_coordinator, blacklist }
     }
 
     pub fn add_session(&mut self, session: IAudioSessionControl, internal_tx: Sender<InternalAudioMsg>) -> windows::core::Result<()> {
         let session2: IAudioSessionControl2 = session.cast()?;
         let pid = unsafe { session2.GetProcessId()? };
+
+        // Return if pid == 0; don't care about the system
+        if pid == 0 { return Ok(()) }
         let name = get_process_name(pid);
+
         // check name against blacklist
         if self.blacklist.contains(&name) {return Ok(());}
 
@@ -171,6 +180,8 @@ impl AudioStateManager {
 // ==========================================
 pub fn run_audio_subsystem(to_coordinator: Sender<AudioMsg>) -> windows::core::Result<()> {
 
+    debug!("[Audio Subsystem] Initializing...");
+
     let (internal_tx, internal_rx) = crossbeam_channel::unbounded::<InternalAudioMsg>();
     let mut manager = AudioStateManager::new(to_coordinator.clone());
 
@@ -201,8 +212,9 @@ pub fn run_audio_subsystem(to_coordinator: Sender<AudioMsg>) -> windows::core::R
                 let _ = manager.add_session(session, internal_tx.clone());
             }
             InternalAudioMsg::AppClosed { pid } => manager.remove_session(pid),
-            InternalAudioMsg::VolumeChanged { pid, volume } => {
-                let _ = manager.to_coordinator.send(AudioMsg::VolumeChanged { pid, volume });
+            InternalAudioMsg::VolumeChanged { pid, volume, muted } => {
+                // send message directly bc manager does not track volume directly
+                let _ = manager.to_coordinator.send(AudioMsg::VolumeChanged { pid, volume, muted }); 
             }
         }
     }
