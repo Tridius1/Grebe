@@ -16,7 +16,9 @@ use tray_icon::{
 use std::thread;
 use crossbeam_channel::{unbounded, select};
 use log::{info, debug, error};
-use env_logger::Builder;
+use env_logger::{Builder, Target, WriteStyle};
+use std::io::{stderr, IsTerminal};
+use std::fs::File;
 use std::collections::BTreeMap;
 
 mod config;
@@ -152,7 +154,23 @@ fn main() -> Result<(), Box<dyn Error>> {
     } else {
         log::LevelFilter::Info
     };
-    Builder::new().filter_level(log_level).init();
+    let mut log_builder = Builder::new();
+    // Check if stderr is attached
+    if stderr().is_terminal() {
+        // log to terminal
+        log_builder.target(Target::Stderr);
+    } else {
+        // log to file
+        log_builder.write_style(WriteStyle::Never);
+        if let Ok(log_file) = File::create("grebe.log") {
+            log_builder.target(Target::Pipe(Box::new(log_file)));
+        } else {
+            // If the log file cannot be written, discard logs
+            log_builder.target(Target::Pipe(Box::new(std::io::sink())));
+        }
+    }
+    log_builder.filter_level(log_level).init();
+
     debug!("{:?}", cfg);
 
     // Spawn coordinator, it does all the important work
