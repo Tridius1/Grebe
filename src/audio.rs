@@ -49,13 +49,12 @@ fn get_process_name(pid: u32) -> String {
         }
     }
     "Unknown".to_string()
-
 }
 
 // External messages (sent to coordinator)
 #[derive(Debug, Clone)]
 pub enum AudioMsg {
-    AppOpened { pid: u32, name: String }, // called both during initiliazation and when apps opened while running
+    AppOpened { pid: u32, name: String, volume: f32, muted: bool }, // called both during initiliazation and when apps opened while running
     VolumeChanged { pid: u32, volume: f32, muted: bool },
     AppClosed { pid: u32 },
 }
@@ -156,6 +155,11 @@ impl AudioStateManager {
         let app_listener: IAudioSessionEvents = AppEventListener { pid, tx: internal_tx }.into();
         unsafe { session.RegisterAudioSessionNotification(&app_listener)?; }
 
+        // Get volume
+        let volume_control: ISimpleAudioVolume = session.cast()?;
+        let volume = unsafe { volume_control.GetMasterVolume()? };
+        let mute = unsafe { volume_control.GetMute()? };
+
         self.sessions.insert(pid, TrackedSession {
             pid,
             name: name.clone(),
@@ -163,7 +167,7 @@ impl AudioStateManager {
             _listener: app_listener,
         });
 
-        let _ = self.to_coordinator.send(AudioMsg::AppOpened { pid, name });
+        let _ = self.to_coordinator.send(AudioMsg::AppOpened { pid, name, volume, muted: mute.as_bool() });
         Ok(())
     }
 
