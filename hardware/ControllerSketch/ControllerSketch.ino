@@ -14,16 +14,6 @@
 #define MUTE_CMD 0x10
 
 
-struct __attribute__((packed)) FrameEntry {
-    uint8_t volume;
-    bool muted; // boolean
-    char name[20];
-};
-
-struct __attribute__((packed)) DisplayFrame {
-    FrameEntry slots[3]; // [0] = Prev, [1] = Curr, [2] = Next
-};
-
 void send_cmd_byte(uint8_t cmd) {
   uint8_t packet[2] = {CMD_HEADER, cmd};
   Serial.write(packet, 2);
@@ -32,6 +22,8 @@ void send_cmd_byte(uint8_t cmd) {
 void send_ack() {
   Serial.write(ACK_BYTE);
 }
+
+Display* LCD = nullptr;
 
 DisplayFrame ui_frame; // holds the current frame
 
@@ -47,7 +39,8 @@ void setup() {
   //Serial.println("Ready");
 
   // Setup screen
-  initScreen();
+  //initScreen();
+  LCD = new Display(3);
 
   initEncoders();
 }
@@ -92,11 +85,13 @@ void serial_input() {
 
   char incomingByte = Serial.read();
   switch (incomingByte) {
-    case 0xBB:
+    case FRAME_HEADER:
       // New frame
       Serial.readBytes((char*)&ui_frame, sizeof(DisplayFrame));
       // Send ACK byte
       Serial.write(0x06);
+      // Write new frame
+      LCD -> render_frame(ui_frame);
       break;
     default:
       break;
