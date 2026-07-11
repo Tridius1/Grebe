@@ -9,6 +9,7 @@ static CONFIG: OnceLock<GrebeConfig> = OnceLock::new();
 pub struct GrebeConfig {
     pub verbose: bool,
     pub blacklist: Vec<String>,
+    pub select_new_app: bool,
     pub volume_scroll_size: u8,
     pub invert_volume: bool,
     pub invert_navigation: bool,

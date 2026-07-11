@@ -61,6 +61,7 @@ impl MixerManager {
         debug!("Scrolled to: {:?}", self.apps[&selected_key]);
     }
 
+
     pub fn audio_update(&mut self, message: audio::AudioMsg) {
         match message {
             audio::AudioMsg::AppOpened {pid, name, volume: f_volume, muted} => {
@@ -70,6 +71,13 @@ impl MixerManager {
                     muted
                 });
                 self.count += 1;
+                // select the new app
+                if config::get().select_new_app {
+                    let keys: Vec<u32> = self.apps.keys().cloned().collect();
+                    self.selected_index = keys.iter().position( |&k| k == pid ).expect("[Coordinator] Cannot find new pid in keys.");
+                    let selected_key = keys[self.selected_index];
+                    debug!("Scrolled to new app: {:?}", self.apps[&selected_key]);
+                }
             }
             audio::AudioMsg::VolumeChanged {pid, volume, muted} => {
                 if let Some(status) = self.apps.get_mut(&pid) {
@@ -80,6 +88,8 @@ impl MixerManager {
             audio::AudioMsg::AppClosed {pid} => {
                 let _ = self.apps.remove(&pid);
                 self.count -= 1;
+                // Ensure closing app is not selected
+                if self.selected_index >= self.apps.keys().count() { self.selected_index -= 1; }
             }
         }
     }
