@@ -146,6 +146,7 @@ impl AudioStateManager {
         // Return if pid == 0; don't care about the system
         if pid == 0 { return Ok(()) }
         let name = get_process_name(pid);
+        if name == "Unknown" { return Ok(()) } // Ignore apps with unknown names, usually don't want them
 
         // check name against blacklist
         if self.blacklist.contains(&name) {return Ok(());}
