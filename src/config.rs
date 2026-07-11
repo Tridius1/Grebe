@@ -8,6 +8,7 @@ static CONFIG: OnceLock<GrebeConfig> = OnceLock::new();
 #[derive(Debug, Deserialize)]
 pub struct GrebeConfig {
     pub verbose: bool,
+    pub port: String,
     pub blacklist: Vec<String>,
     pub select_new_app: bool,
     pub volume_scroll_size: u8,

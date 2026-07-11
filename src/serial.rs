@@ -1,5 +1,7 @@
 use std::thread;
 use crossbeam_channel::{Sender, Receiver, select};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use serialport;
 use serialport::SerialPort;
 use std::collections::BTreeMap;
@@ -54,17 +56,8 @@ enum SerialRecieved {
 	Error(u8)
 }
 
-
-pub fn run_serial_subsystem(to_coordinator: Sender<ControlMsg>, from_coordinator: Receiver<FramePacket>) {
-
-	let port_result = serialport::new("COM3", 115200).timeout(Duration::from_millis(1)).open();
-	let port = match port_result {
-		Ok(p) => p,
-		Err(e) => {
-			eprintln!("[Serial Subsystem] Failed to open COM3. Is the microcontroller plugged in? Error: {}", e);
-			return;
-		}
-	};
+fn serial_subsystem(mut port: Box<dyn SerialPort>, to_coordinator: Sender<ControlMsg>, from_coordinator: Receiver<FramePacket>){
+	let running_flag = Arc::new(AtomicBool::new(true)); // Flag for closing child threads
 
 	// Create interal channels
 	let (writer_packets_tx, writer_packets_rx) = crossbeam_channel::unbounded::<FramePacket>();
@@ -76,18 +69,21 @@ pub fn run_serial_subsystem(to_coordinator: Sender<ControlMsg>, from_coordinator
 		Ok(cp) => cp,
 		Err(e) => { eprintln!("[Serial Subsystem] Failed to clone serial port for reader."); return }
 	};
-	thread::spawn(move || { serial_reader(port_clone, reader_tx) } );
-	thread::spawn(move || { serial_writer(port, writer_packets_rx, writer_ack_rx); } );
+	let rd_run_flag = Arc::clone(&running_flag);
+	let wr_run_flag = Arc::clone(&running_flag);
+
+	let reader_handle = thread::spawn(move || { serial_reader(rd_run_flag, port_clone, reader_tx) } );
+	let writer_handle = thread::spawn(move || { serial_writer(wr_run_flag, port, writer_packets_rx, writer_ack_rx); } );
 	
 	// listen for messages
-	loop {
+	while running_flag.load(Ordering::Relaxed) {
 		select!{
 			recv(from_coordinator) -> msg => {
 				match msg {
 					Ok(packet) => {
 						writer_packets_tx.send(packet);
 					}
-					Err(e) => { eprintln!("[Serial Subsystem] Error reading message from Coordinator.") }
+					Err(e) => { eprintln!("[Serial Subsystem] Error reading message from Coordinator: {}", e) }
 				}
 			}
 			recv(reader_rx) -> msg => {
@@ -104,24 +100,60 @@ pub fn run_serial_subsystem(to_coordinator: Sender<ControlMsg>, from_coordinator
 							SerialRecieved::RequestFrame => { to_coordinator.send(ControlMsg::NewFrame); }
 						}
 					}
-					Err(_) => { eprintln!("[Serial Subsystem] Error reading message from Serial Reader.") }
+					Err(e) => { debug!("[Serial Subsystem] Error reading message from Serial Reader: {}", e); break; }
 				}
 			}
 		}
 	}
+	// Ensure child threads are closed
+	running_flag.store(false, Ordering::Relaxed);
+	reader_handle.join();
+	writer_handle.join();
+	debug!("[Serial Subsystem] A fatal error occured, threads have been shut down. Will attempt to reconnect.");
+}
 
-	
+// wrapper function to retry connecion
+pub fn run_serial_subsystem(to_coordinator: Sender<ControlMsg>, from_coordinator: Receiver<FramePacket>) {
+	let port_name = config::get().port.clone();
+	let mut retry_timeout = Duration::from_millis(500);
+
+	loop {
+		let port_result = serialport::new(&port_name, 115200).timeout(Duration::from_millis(10)).open();
+		let port = match port_result {
+			Ok(p) => {
+				retry_timeout = Duration::from_millis(500); // reset retry for next disconnect
+				p
+			},
+			Err(e) => {
+				debug!("[Serial Subsystem] Failed to open {}. Is the microcontroller plugged in? Error: {}", port_name, e);
+				// Wait here for a bit before retrying
+				let timer_start = Instant::now();
+				while timer_start.elapsed() < retry_timeout {
+					// Shutdown flag check can be placed here if needed
+                    thread::sleep(Duration::from_millis(100));
+                }
+                // Increase timeout for exp backoff, max 10 seconds
+				if retry_timeout < Duration::from_secs(10) {
+					retry_timeout = retry_timeout * 2;
+				}
+				continue;
+			}
+		};
+
+		debug!("[Serial Subsystem] Connected on {}.", port_name);
+		serial_subsystem(port, to_coordinator.clone(), from_coordinator.clone());
+	}
 }
 
 
-fn serial_reader(mut port: Box<dyn SerialPort>, reader_tx: Sender<SerialRecieved>) {
+fn serial_reader(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, reader_tx: Sender<SerialRecieved>) {
 	// Single byte buffer to read headers
 	let mut single_byte_buf = [0u8; 1];
 
-	loop {
+	while running_flag.load(Ordering::Relaxed) {
 		match port.read(&mut single_byte_buf) {
 			Ok(0) => {
-				eprintln!("[Serial Reader] Device disconnected (EOF).");
+				debug!("[Serial Reader] Device disconnected (EOF).");
 			},
 			Ok(1) => {
 				debug!("Received byte: {:?}", single_byte_buf[0]);
@@ -131,10 +163,10 @@ fn serial_reader(mut port: Box<dyn SerialPort>, reader_tx: Sender<SerialRecieved
 						let _ = reader_tx.send(SerialRecieved::Acknowledge);
 					}
 					COMMAND_HEADER => {
-						loop {
+						while running_flag.load(Ordering::Relaxed) {
 							let mut payload = [0u8, 1];
 							match port.read(&mut payload) {
-								Ok(0) => eprintln!("[Serial Reader] Device disconnected (EOF)."),
+								Ok(0) => debug!("[Serial Reader] Device disconnected (EOF)."),
 								Ok(1) => {
 									reader_tx.send(read_command(payload[0]));
 									break;
@@ -144,7 +176,7 @@ fn serial_reader(mut port: Box<dyn SerialPort>, reader_tx: Sender<SerialRecieved
 									std::thread::yield_now(); // If we timed out, yield and try again later
 								}
 								Err(e) => {
-									eprintln!("[Serial Reader] Fatal read error: {}", e);
+									debug!("[Serial Reader] Fatal read error: {}", e);
 								}
 							}
 						}
@@ -157,16 +189,23 @@ fn serial_reader(mut port: Box<dyn SerialPort>, reader_tx: Sender<SerialRecieved
 				std::thread::yield_now(); // If we timed out, yield and try again later
 			}
 			Err(e) => {
-				eprintln!("[Serial Reader] Fatal read error: {}", e);
+				debug!("[Serial Reader] Fatal read error: {}", e);
+				break;
 			}
 		}
 	}
 	debug!("[Serial Reader] Serial reader has terminated.");
+	running_flag.store(false, Ordering::Relaxed); 
 }
 
 
-fn serial_writer(mut port: Box<dyn SerialPort>, packets_rx: Receiver<FramePacket>, ack_rx: Receiver<SerialRecieved>) {
-	for packet in packets_rx {
+fn serial_writer(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, packets_rx: Receiver<FramePacket>, ack_rx: Receiver<SerialRecieved>) {
+	while running_flag.load(Ordering::Relaxed) {
+		let packet = match packets_rx.recv_timeout(Duration::from_millis(50)) {
+        	Ok(p) => p,
+        	Err(crossbeam_channel::RecvTimeoutError::Timeout) => continue, // Loop back and check running_flag
+        	Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break, // Channel closed, exit loop
+    	};
 		// retry 5 times
 		for attempt in 1..=5 {
 			// do the writing
@@ -184,7 +223,8 @@ fn serial_writer(mut port: Box<dyn SerialPort>, packets_rx: Receiver<FramePacket
 		}
 		
 	}
-	eprintln!("[Serial Subsystem] Serial writer terminated.");
+	debug!("[Serial Subsystem] Serial writer terminated.");
+	running_flag.store(false, Ordering::Relaxed);
 }
 
 

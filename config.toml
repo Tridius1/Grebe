@@ -1,6 +1,8 @@
 # Main project settings
 verbose = true
 
+port = "COM3"
+
 blacklist = ["steamwebhelper", "wallpaper64", "SteelSeriesMoments", "SpotifyWidgetProvider", "GameBar", "DiscordHookHelper"]
 
 # Automatically select newly opened applications
