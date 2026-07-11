@@ -18,7 +18,7 @@
 DIYables_TFT_ILI9486_Shield tft(17, 16, 26, 25, 21, 5, 27, 14, 2, 4, 15, 33, 32);
 
 void initScreen() {
-  Serial.println("initScreen");
+  //Serial.println("initScreen");
   tft.begin();
   tft.setRotation(3); // Set to Landscape Mode
   
@@ -32,9 +32,9 @@ void initScreen() {
   tft.setTextColor(COLOR_BLACK);
   tft.setTextSize(2);
   tft.setCursor(55, 65);
-  tft.print("Screen Init");
+  //tft.print("Screen Init");
   
   tft.setCursor(55, 95);
   tft.print("ESP32 Status: OK!");
-  Serial.println("LCD Initilized");
+  //Serial.println("LCD Initilized");
 }

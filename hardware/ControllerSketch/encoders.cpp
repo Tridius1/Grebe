@@ -9,6 +9,9 @@ const int VOL_B  = 19;
 const int NAV_A = 23;
 const int NAV_B  = 22;
 
+// Mute button pin
+const int MUTE_PIN = 13;
+
 // Encoder objects
 ESP32Encoder volEncoder;
 ESP32Encoder navEncoder;
@@ -16,14 +19,19 @@ ESP32Encoder navEncoder;
 // State variables
 int64_t lastVolCount = 0;
 int64_t lastNavCount = 0;
+int lastButtonState = HIGH;
 
 // Time variable to filter out bounces (bounces above 12.8 microseconds, a problem for cheap encoders)
 unsigned long lastVolTime = 0;
 unsigned long lastNavTime = 0;
+unsigned long lastMuteTime = 0;
 const unsigned long DEBOUNCE_DELAY = 30;
 
 
 void initEncoders() {
+  // Pullup mute button
+  pinMode(MUTE_PIN, INPUT_PULLUP);
+
   // Pullup encoders
   ESP32Encoder::useInternalWeakPullResistors = puType::up;
 
@@ -39,6 +47,7 @@ void initEncoders() {
   navEncoder.clearCount();
   lastVolCount = volEncoder.getCount();
   lastNavCount = navEncoder.getCount();
+
 }
 
 // Get change in volume encoder position
@@ -68,6 +77,23 @@ int navDelta() {
   }
   lastNavCount = currentNavCount;
   return delta;
+}
+
+// Returns true exacly once each time the mute button is pushed
+bool muteCheck() {
+  int buttonState = digitalRead(MUTE_PIN);
+  unsigned long now = millis();
+
+  if (now - lastMuteTime >= DEBOUNCE_DELAY) {
+    if (buttonState != lastButtonState) {
+      lastButtonState = buttonState;
+      if (buttonState == LOW){
+        //Button pressed
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 

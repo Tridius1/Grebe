@@ -2,3 +2,10 @@
 verbose = true
 
 blacklist = ["steamwebhelper", "wallpaper64", "SteelSeriesMoments", "SpotifyWidgetProvider", "GameBar", "DiscordHookHelper"]
+
+# How many percentage points should the volume be adjusted per click
+volume_scroll_size = 5
+
+# Reverse the effect of spinning a knob
+invert_volume = false
+invert_navigation = false

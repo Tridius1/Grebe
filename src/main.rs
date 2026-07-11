@@ -25,29 +25,189 @@ mod config;
 mod audio;
 mod serial;
 
-
+const MAX_NAME_LEN: usize = 30; // size of char array that will be sent to the arduino
+const ENTRY_SIZE: usize = (MAX_NAME_LEN + 2); //size of FrameEntry in bytes; name + volume + mute
+const FRAME_SIZE: usize = (ENTRY_SIZE * 3) + 1; //size of DisplayFrame in bytes; 3 entries + 1 header byte
 
 // Holds all needed info for a single application
+#[derive(Debug)]
 struct VolumeStatus {
     volume: u8,
     muted: bool,
     name: String,
 }
 
-struct MixerStatus {
-    apps: BTreeMap<u32, VolumeStatus>
+// Manages the state of the mixer, all apps and their data
+#[derive(Debug)]
+struct MixerManager {
+    apps: BTreeMap<u32, VolumeStatus>,
+    count: usize,
+    selected_index: usize
+}
+
+impl MixerManager {
+    pub fn new() -> Self {
+        Self {apps: BTreeMap::new(), count: 0, selected_index: 0}
+    }
+
+    // Called when user spins nav knob
+    pub fn scroll(&mut self, is_up: bool) {
+        if is_up { self.selected_index = (self.selected_index + 1) % (self.count as usize) }
+        else { self.selected_index = ((self.count + self.selected_index) - 1) % (self.count as usize) }
+
+        //debug
+        let keys: Vec<u32> = self.apps.keys().cloned().collect();
+        let selected_key = keys[self.selected_index];
+        debug!("Scrolled to: {:?}", self.apps[&selected_key]);
+    }
+
+    pub fn audio_update(&mut self, message: audio::AudioMsg) {
+        match message {
+            audio::AudioMsg::AppOpened {pid, name, volume: f_volume, muted} => {
+                self.apps.insert(pid, VolumeStatus{
+                    name,
+                    volume: MixerManager::convert_volume(f_volume),
+                    muted
+                });
+                self.count += 1;
+            }
+            audio::AudioMsg::VolumeChanged {pid, volume, muted} => {
+                if let Some(status) = self.apps.get_mut(&pid) {
+                    status.volume = MixerManager::convert_volume(volume);
+                    status.muted = muted;
+                }
+            }
+            audio::AudioMsg::AppClosed {pid} => {
+                let _ = self.apps.remove(&pid);
+                self.count -= 1;
+            }
+        }
+    }
+
+    fn convert_volume(f_volume: f32) -> u8 {
+        (100.0 * f_volume).round() as u8
+    }
+
+    pub fn frame(&self) -> DisplayFrame {
+        if self.count == 0 { // easy out if no apps open
+            return DisplayFrame::new(None, None, None)
+        }
+        // manage index -> key (pid)
+        let keys: Vec<u32> = self.apps.keys().cloned().collect();
+        let selected_key = keys[self.selected_index];
+        if self.count == 1 {
+            return DisplayFrame::new(None, self.apps.get(&selected_key), None)
+        }
+        // 2 is tricky, we want to maintain order on screen instead of wrapping
+        if self.count == 2 {
+            if self.selected_index == 0 {
+                // [1] is always next if not selected
+                return DisplayFrame::new(None, self.apps.get(&selected_key), self.apps.get(&keys[1]))
+            }
+            else {
+                // [0] is always prev if not selected
+                return DisplayFrame::new(self.apps.get(&keys[0]), self.apps.get(&selected_key), None)
+            }
+        }
+        // Generic option, 3+ apps in list; use modulo to wrap around list
+        let next_key = keys[ (self.selected_index + 1) % (self.count as usize) ];
+        let prev_key = keys[ ((self.count + self.selected_index) - 1) % (self.count as usize) ];
+        return DisplayFrame::new(self.apps.get(&prev_key), self.apps.get(&selected_key), self.apps.get(&next_key))
+    }
+}
+
+// one of three entrys in a frame, is exactly 32 bytes (when MAX_NAME_LEN == 30)
+struct FrameEntry {
+    pub volume: u8,
+    pub muted: u8,
+    pub name: [u8; MAX_NAME_LEN]
+}
+impl FrameEntry {
+    // new FrameEntry from VolumeStatus, or empty frame if none
+    fn new(status: Option<&VolumeStatus>) -> Self {
+        // buffer of ASCII values, 0 to start
+        let mut name_bytes = [0u8; MAX_NAME_LEN];
+        match status {
+            Some(status) => {
+                // convert name string to array of ASCII values
+                let bytes = status.name.as_bytes();
+                let len = bytes.len().min(MAX_NAME_LEN - 1); // cap the length of the string
+                name_bytes[..len].copy_from_slice(&bytes[..len]);
+
+                // create entry
+                Self {
+                    volume: status.volume,
+                    muted: status.muted as u8,
+                    name: name_bytes
+                }
+            }
+            None => {
+                Self {
+                    volume: 0,
+                    muted: 0,
+                    name: name_bytes
+                }
+            }
+        }
+        
+    }
+}
+
+// All info needed to send a frame to the Arduino
+pub struct DisplayFrame {
+    entries: [FrameEntry; 3], // [0] = Prev, [1] = Curr, [2] = Next
+}
+
+impl DisplayFrame {
+    fn new (prev: Option<&VolumeStatus>, curr: Option<&VolumeStatus>, next: Option<&VolumeStatus>) -> Self {
+        if curr.is_none() {
+            if prev.is_none() || next.is_none() {
+                // this state represents a logic error; curr should be Some unless there are no apps
+                panic!("DisplayFrame.from_VolumeStatus called with no current, but some prev or next. ");
+            }
+        }
+        // populate frame
+        Self {
+            entries: [FrameEntry::new(prev), FrameEntry::new(curr), FrameEntry::new(next)]
+        }
+    }
+
+    // Serialize frame to send to Arduino
+    fn to_bytes(&self) -> serial::FramePacket {
+        let mut bytes = [0u8; FRAME_SIZE];
+
+        //set header
+        bytes[0] = serial::FRAME_HEADER;
+
+        // iterate over entries and populate buffer
+        for (i, entry) in self.entries.iter().enumerate() {
+            let start = 1 + (i * ENTRY_SIZE);
+            bytes[start] = entry.volume;
+            bytes[start + 1] = entry.muted;
+            // name char array
+            let name_start = start + 2;
+            let name_end = name_start + MAX_NAME_LEN;
+            bytes[name_start..name_end].copy_from_slice(&entry.name);
+        }
+
+        return serial::FramePacket(bytes)
+    }
 }
 
 // The prime control loop
 fn coordinator() {
+    let cfg = config::get();
+
     // Setup crossbeam channels
     // Channel for Audio thread to talk to Coordinator
     let (audio_tx, audio_rx) = crossbeam_channel::unbounded::<audio::AudioMsg>();
 
     // Channels for reading and writing for serial threads
     let (serial_read_tx, serial_read_rx) = crossbeam_channel::unbounded::<serial::ControlMsg>();
-    let (serial_write_tx, serial_write_rx) = crossbeam_channel::unbounded::<serial::ControlMsg>();
+    let (serial_write_tx, serial_write_rx) = crossbeam_channel::unbounded::<serial::FramePacket>();
 
+    // Create manager
+    let mut manager = MixerManager::new();
 
     // Spawn threads
     debug!("[Coordinator] Spawning threads");
@@ -58,20 +218,43 @@ fn coordinator() {
     // Main Loop
     loop {
         select! {
-            recv(audio_rx) -> response => {
-                match response{
+            recv(audio_rx) -> received => {
+                match received{
                     Ok(message) => {
                         debug!("[Coordinator] Audio message: {:?}", message);
+                        manager.audio_update(message); // update the manager
+                        // send new frame to arduino
+                        serial_write_tx.send(manager.frame().to_bytes());
                     }
                     Err(_) => {
                         error!("[Coordinator] Audio thread disconnected! Breaking coordinator loop.");
                         break; 
                     }
                 }
-                
+            }
+            recv(serial_read_rx) -> received => {
+                match received {
+                    Ok(command) => {
+                        debug!("[Coordinator] Serial command: {:?}", command);
+                        match command {
+                            serial::ControlMsg::AppScroll{up} => {
+                                let is_up = if cfg.invert_volume {!up} else {up};
+                                manager.scroll(is_up);
+                            }
+                            serial::ControlMsg::VolumeScroll{up} => {
+                                let is_up = if cfg.invert_volume {!up} else {up};
+                            }
+                            serial::ControlMsg::MuteToggle => {}
+                            serial::ControlMsg::NewFrame => {}
+                        }
+                    }
+                    Err(_) => {
+                        error!("[Coordinator] Serial thread disconnected! Breaking coordinator loop.");
+                        break; 
+                    }
+                }
             }
         }
-
         
     }
     // Join threads if loop is exited

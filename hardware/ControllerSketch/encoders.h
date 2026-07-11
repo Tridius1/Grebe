@@ -4,5 +4,6 @@
 void initEncoders();
 int volDelta();
 int navDelta();
+bool muteCheck();
 
 #endif

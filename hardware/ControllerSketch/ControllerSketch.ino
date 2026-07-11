@@ -3,11 +3,37 @@
 
 #define BUILTIN_LED 2
 
+#define CMD_HEADER 0xAA
+#define FRAME_HEADER 0xBB
+#define ACK_BYTE 0x06
 
-struct __attribute__((packed)) MixerStatus {
-  uint8_t volume;
-  char name[31]; // Brings the total size to 32 bytes
+#define VOLUP_CMD 0x02
+#define VOLDOWN_CMD 0x03
+#define NAVUP_CMD 0x04
+#define NAVDOWN_CMD 0x05
+#define MUTE_CMD 0x10
+
+
+struct __attribute__((packed)) FrameEntry {
+    uint8_t volume;
+    bool muted; // boolean
+    char name[20];
 };
+
+struct __attribute__((packed)) DisplayFrame {
+    FrameEntry slots[3]; // [0] = Prev, [1] = Curr, [2] = Next
+};
+
+void send_cmd_byte(uint8_t cmd) {
+  uint8_t packet[2] = {CMD_HEADER, cmd};
+  Serial.write(packet, 2);
+}
+
+void send_ack() {
+  Serial.write(ACK_BYTE);
+}
+
+DisplayFrame ui_frame; // holds the current frame
 
 void setup() {
   // Light setup
@@ -18,7 +44,7 @@ void setup() {
   // Wait for serial port to connect
   while (!Serial) { ; }
   delay(500);
-  Serial.println("Ready");
+  //Serial.println("Ready");
 
   // Setup screen
   initScreen();
@@ -31,21 +57,31 @@ void loop() {
   // Volume encoder handling
   int volumeChange = volDelta();
   if (volumeChange != 0) {
-    Serial.print("Volume change: ");
-    Serial.println(volumeChange);
+    if (volumeChange > 0) {
+      send_cmd_byte(VOLUP_CMD);
+    } else {
+      send_cmd_byte(VOLDOWN_CMD);
+    }
   }
   // Navigation encoder handling
   int navigationChange = navDelta();
   if (navigationChange != 0) {
-    Serial.print("Navigation change: ");
-    Serial.println(navigationChange);
+    if (navigationChange > 0) {
+      send_cmd_byte(NAVUP_CMD);
+    } else {
+      send_cmd_byte(NAVDOWN_CMD);
+    }
   }
 
+  // Check for mute button press
+  if (muteCheck()) {
+    send_cmd_byte(MUTE_CMD);
+  }
 
   // check if new serial data
-  //if (Serial.available() > 0) {
-  //  serial_input();
-  //}
+  if (Serial.available() > 0) {
+    serial_input();
+  }
   delay(1);
 }
 
@@ -56,17 +92,15 @@ void serial_input() {
 
   char incomingByte = Serial.read();
   switch (incomingByte) {
-    case 'A':
-      // Acknowledge; send back OK
-      Serial.println("OK");
+    case 0xBB:
+      // New frame
+      Serial.readBytes((char*)&ui_frame, sizeof(DisplayFrame));
+      // Send ACK byte
+      Serial.write(0x06);
       break;
     default:
       break;
   }
-  if (Serial.available() > 0) {
-    String incomingData = Serial.readStringUntil('\n');
-    Serial.print("Unhandled Data: ");
-    Serial.println(incomingData);
-  }
-
 }
+
+
