@@ -15,17 +15,21 @@
 
 #define LINE_GAP 8 // pixels between lines of text (top to top)
 
-
+// Initialize display with custom ESP32 pin configuration; TODO: Get this from config
+// Pins used: D0=12, D1=13, D2=26, D3=25, D4=21, D5=5, D6=27, D7=14, RD=2, WR=4, CD/DC=15, CS=33, RST=32
 Display::Display(uint8_t rot) : lcd (17, 16, 26, 25, 21, 5, 27, 14, 2, 4, 15, 33, 32) {
   // init settings
   rotation = rot;
   text_size = 3;
   text_color = COLOR_BLACK;
   bk_color = COLOR_CYAN;
-  text_len = 24;
+  text_len = 20;
+  side_pad = 30;
+  // Calculate padding
+  mid_pad = (lcd.height() / 4) - (8 * text_size);
+  top_pad = mid_pad / 2;
 
   lcd.begin(); // Init screen; MUST ONLY BE CALLED ONCE
-
   setup();
 }
 
@@ -34,46 +38,82 @@ void Display::setup() {
   lcd.fillScreen(bk_color);
   lcd.setTextColor(text_color, bk_color);
   lcd.setTextSize(text_size);
+  // Draw selection box
+  int box_top = ((top_pad * 2) + mid_pad + (text_size * 16)) / 2;
+  int box_bot = ((top_pad * 2) + (mid_pad * 3) + (text_size * 16)) / 2;
+  lcd.drawRoundRect(
+    side_pad / 2, 
+    box_top, 
+    lcd.width() - side_pad, 
+    box_bot - box_top, 
+    10, 
+    COLOR_BLACK);
 }
 
 void Display::render_frame(DisplayFrame frame) {
-  char buffer[text_len];
+  int text_height = 8 * text_size;
+  int text_width = 6 * text_size;
 
+  char buffer[text_len + 1] = {};
   for (int i = 0; i < 3; i++) {
+    int y_pos = top_pad + (i * mid_pad);
     // Name
     snprintf(buffer, sizeof(buffer), "%s", frame.slots[i].name);
-    lcd.setCursor(left_pad, top_pad + (i * mid_pad));
+    lcd.setCursor(side_pad, y_pos);
     lcd.print(buffer);
+    // Clear rest of name space if needed
+    int cursor_x = lcd.getCursorX();
+    if (cursor_x < frame_state[i].name_end) {
+      lcd.fillRect(
+        cursor_x, 
+        y_pos, 
+        frame_state[i].name_end - cursor_x, 
+        text_height, 
+        bk_color
+      );
+    }
+    frame_state[i].name_end = cursor_x; // set frame state
+
     // Info
-    String vol_string = String(frame.slots[i].volume);
-    String mute_string = (frame.slots[i].muted) ? "[MUTED]" : "";
-    snprintf(buffer, sizeof(buffer), "%-*s%s%%", vol_string.length(), mute_string.c_str(), vol_string.c_str());
-    lcd.setCursor(left_pad, top_pad + (i * mid_pad) + (8 * text_size));
-    lcd.print(buffer);
-  }  
+    
+    // If mute state changed
+    if (frame_state[i].muted != frame.slots[i].muted) {
+      if (frame.slots[i].muted) {
+        lcd.setCursor(side_pad + 8, y_pos + text_height + 6);
+        lcd.setTextSize(text_size - 1);
+        lcd.print("[MUTE]");
+        lcd.setTextSize(text_size);
+      } else {
+        lcd.fillRect(
+          side_pad + 8, 
+          y_pos + text_height + 6, 
+          7 * (text_width - 6), 
+          text_height - 8, 
+          bk_color
+        );
+      }
+      frame_state[i].muted = frame.slots[i].muted;
+    }
+    
+    int volume_state = (frame.slots[i].name[0] == '\0') ? -1 : frame.slots[i].volume; // negate state means do not draw
+    // if volume changed
+    if (frame_state[i].volume != volume_state) {
+      if (volume_state < 0) {
+        // Clear old volume
+        lcd.fillRect(
+          lcd.width() - side_pad - (4 * text_width), 
+          y_pos + text_height, 
+          5 * (text_width), 
+          text_height, 
+          bk_color
+        );
+      } else {
+        // Print new volume
+        lcd.setCursor(lcd.width() - side_pad - (4 * text_width), y_pos + text_height);
+        lcd.printf("%3i%%", frame.slots[i].volume);
+      }
+      frame_state[i].volume = volume_state;
+    }
+    
+  }
 }
-
-
-/*
-// Initialize display with custom ESP32 pin configuration; TODO: Get this from config
-// Pins used: D0=12, D1=13, D2=26, D3=25, D4=21, D5=5, D6=27, D7=14, RD=2, WR=4, CD/DC=15, CS=33, RST=32
-DIYables_TFT_ILI9486_Shield tft(17, 16, 26, 25, 21, 5, 27, 14, 2, 4, 15, 33, 32);
-
-void initScreen() {
-  //Serial.println("initScreen");
-  tft.begin();
-  tft.setRotation(3); // Set to Landscape Mode
-  
-  // Clear the screen with a clean Blue color background
-  tft.fillScreen(COLOR_CYAN);
-  
-  // Set up text parameters using the active Adafruit GFX base features
-  tft.setTextColor(COLOR_BLACK);
-  tft.setTextSize(3);
-  tft.setCursor(0, 65);
-  tft.print("012345678901234567890123456789");
-  
-  tft.setCursor(55, 95);
-  tft.print("ESP32 Status: OK!");
-}
-*/

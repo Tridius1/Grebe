@@ -201,6 +201,7 @@ fn serial_reader(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, r
 
 fn serial_writer(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, packets_rx: Receiver<FramePacket>, ack_rx: Receiver<SerialRecieved>) {
 	while running_flag.load(Ordering::Relaxed) {
+		// Get packets from serial subsystem
 		let packet = match packets_rx.recv_timeout(Duration::from_millis(50)) {
         	Ok(p) => p,
         	Err(crossbeam_channel::RecvTimeoutError::Timeout) => continue, // Loop back and check running_flag
@@ -216,7 +217,7 @@ fn serial_writer(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, p
 				debug!("[Serial Writer] Failed to flush serial port buffers: {}", err);
 			}
 			// Wait for Ack
-			match ack_rx.recv_timeout(Duration::from_millis(30)) {
+			match ack_rx.recv_timeout(Duration::from_millis(50)) {
 				Ok(_) => { debug!("[Serial Writer] Packet delivered successfully on attempt {}.", attempt); break; }
 				Err(_) => { debug!("[Serial Writer] Timeout waiting for ACK. Retrying (Attempt {}/5).", attempt); }
 			}
