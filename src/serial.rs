@@ -22,7 +22,7 @@ const NAVDOWN_CMD: u8 = 0x05;
 const MUTE_CMD: u8 = 0x10;
 
 // newtype wrapper for frame bytes
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct FramePacket(pub [u8; crate::FRAME_SIZE]);
 // allows easy writing of bytes to serial port
 impl AsRef<[u8]> for FramePacket {
@@ -194,29 +194,69 @@ fn serial_reader(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, r
 
 
 fn serial_writer(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, packets_rx: Receiver<FramePacket>, ack_rx: Receiver<SerialRecieved>) {
-	while running_flag.load(Ordering::Relaxed) {
-		// Get packets from serial subsystem
-		let packet = match packets_rx.recv_timeout(Duration::from_millis(50)) {
-        	Ok(p) => p,
-        	Err(crossbeam_channel::RecvTimeoutError::Timeout) => continue, // Loop back and check running_flag
-        	Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break, // Channel closed, exit loop
-    	};
-		// retry 5 times
-		for attempt in 1..=5 {
-			// do the writing
-			if port.write_all(packet.as_ref()).is_err() {
-    			debug!("[Serial Writer] Could not write to serial port.");
+	let mut packet: Option<FramePacket> = None;
+	let mut attempt: u8 = 0;
+	let mut unsent_waiting: bool = false; // flag to ensure most recent packet is sent
+	let mut timer = Instant::now(); // timer to ensure packets are not sent too fast
+	while running_flag.load(Ordering::Relaxed) {  
+		if packet.is_some() {
+			// We have a packet, send it if it's not too soon
+			if timer.elapsed() >= Duration::from_millis(10) {
+				if port.write_all(packet.clone().expect("[Serial Writer] Packet.expect failed while is_some()").as_ref()).is_err() {
+	    			debug!("[Serial Writer] Could not write to serial port.");
+	    			break;
+				}
+				if let Err(err) = port.flush() {
+					debug!("[Serial Writer] Failed to flush serial port buffers: {}", err);
+					break;
+				}
+				attempt += 1;
+				timer = Instant::now() // reset the timer
 			}
-			if let Err(err) = port.flush() {
-				debug!("[Serial Writer] Failed to flush serial port buffers: {}", err);
+			// Just sent a packet; wait for ack and replace old packets (only send new packets)
+			select!{
+				// replacing old packets if they arrive before acknoledgement
+				recv(packets_rx) -> new_packet => {
+					match new_packet {
+			        	Ok(p) => {
+							debug!("[Serial Writer] Replaced old packet before acknowledgment.");
+							packet = Some(p);
+							unsent_waiting = true; // Make sure this new packet is sent
+			        	}
+			        	Err(e) => {
+			        		debug!("[Serial Writer] Error receiving packets from Serial Subsystem: {}", e);
+			        	}
+			    	}
+				}
+				// recived ack, we're done
+				recv(ack_rx) -> _ => {
+					debug!("[Serial Writer] Packet delivered successfully on attempt {}.", attempt);
+					attempt = 0;
+					if unsent_waiting {
+						// If a packet has replaced the last one and sit unsent it should be sent on the next loop, not cleared
+						unsent_waiting = false;
+					} else {
+						packet = None;
+					}
+				}
+				// timeout
+				default(Duration::from_millis(50)) => {
+					debug!("[Serial Writer] Sent packet was not acknowleded after 50ms.");
+				}
 			}
-			// Wait for Ack
-			match ack_rx.recv_timeout(Duration::from_millis(50)) {
-				Ok(_) => { debug!("[Serial Writer] Packet delivered successfully on attempt {}.", attempt); break; }
-				Err(_) => { debug!("[Serial Writer] Timeout waiting for ACK. Retrying (Attempt {}/5).", attempt); }
+			// abort after 5 attempts
+			if packet.is_some() && attempt > 5 {
+				debug!("[Serial Writer] Failed to deliver packet after 5 attempts.");
+				packet = None;
 			}
+		} else {
+			// No packet, wait for one from serial subsystem
+			match packets_rx.recv_timeout(Duration::from_millis(50)) {
+	        	Ok(p) => packet = Some(p),
+		 		Err(crossbeam_channel::RecvTimeoutError::Timeout) => continue, // Loop back and check running_flag
+	        	Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break, // Channel closed, exit loop
+	    	};
 		}
-		
 	}
 	debug!("[Serial Subsystem] Serial writer terminated.");
 	running_flag.store(false, Ordering::Relaxed);
