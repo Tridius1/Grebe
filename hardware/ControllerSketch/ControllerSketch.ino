@@ -32,7 +32,7 @@ void setup() {
   pinMode(BUILTIN_LED, OUTPUT);
 
   // Init serial port
-  Serial.begin(115200);
+  Serial.begin(921600);
   // Wait for serial port to connect
   while (!Serial) { ; }
   delay(500);

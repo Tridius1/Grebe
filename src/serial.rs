@@ -112,7 +112,7 @@ pub fn run_serial_subsystem(to_coordinator: Sender<ControlMsg>, from_coordinator
 	let mut retry_timeout = Duration::from_millis(500);
 
 	loop {
-		let port_result = serialport::new(&port_name, 115200).timeout(Duration::from_millis(10)).open();
+		let port_result = serialport::new(&port_name, 921600).timeout(Duration::from_millis(10)).open();
 		let port = match port_result {
 			Ok(p) => {
 				retry_timeout = Duration::from_millis(500); // reset retry for next disconnect
