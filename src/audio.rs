@@ -1,13 +1,13 @@
 use env_logger::Builder;
 use log::{info, debug, error};
-use crossbeam_channel::Sender;
+use crossbeam_channel::{Sender, Receiver, select};
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::os::windows::ffi::OsStringExt;
 use windows::Win32::Media::Audio::*;
 use windows::Win32::System::Com::*;
 use windows::Win32::Foundation::BOOL;
-use windows::core::Interface;
+use windows::core::{Interface, GUID};
 use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS
 };
@@ -57,6 +57,12 @@ pub enum AudioMsg {
     AppOpened { pid: u32, name: String, volume: f32, muted: bool }, // called both during initiliazation and when apps opened while running
     VolumeChanged { pid: u32, volume: f32, muted: bool },
     AppClosed { pid: u32 },
+}
+
+#[derive(Debug)]
+pub enum SetAudio {
+    Volume {pid: u32, to: f32},
+    Mute {pid: u32, on: bool}
 }
 
 
@@ -151,6 +157,7 @@ impl AudioStateManager {
         // check name against blacklist
         if self.blacklist.contains(&name) {return Ok(());}
 
+        // prevent repeated entries
         if self.sessions.contains_key(&pid) { return Ok(()); }
 
         let app_listener: IAudioSessionEvents = AppEventListener { pid, tx: internal_tx }.into();
@@ -178,12 +185,29 @@ impl AudioStateManager {
             let _ = self.to_coordinator.send(AudioMsg::AppClosed { pid });
         }
     }
+
+    pub fn change_volume(&self, command: SetAudio)-> windows::core::Result<()> {
+        debug!("[Audio Subsystem] Controling volume: {:?}", command);
+        let context_guid = GUID::zeroed();
+        match command {
+            SetAudio::Volume {pid, to} => {
+                let Some(session) = self.sessions.get(&pid) else {return Ok(())};
+                let control: ISimpleAudioVolume = session.control.cast()?;
+                unsafe { control.SetMasterVolume(to, &context_guid) }
+            }
+            SetAudio::Mute {pid, on} => {
+                let Some(session) = self.sessions.get(&pid) else {return Ok(())};
+                let control: ISimpleAudioVolume = session.control.cast()?;
+                unsafe { control.SetMute(on, &context_guid) }
+            }
+        }
+    }
 }
 
 // ==========================================
 // THE MAIN THREAD LOOP
 // ==========================================
-pub fn run_audio_subsystem(to_coordinator: Sender<AudioMsg>) -> windows::core::Result<()> {
+pub fn run_audio_subsystem(to_coordinator: Sender<AudioMsg>, from_coordinator: Receiver<SetAudio>) -> windows::core::Result<()> {
 
     debug!("[Audio Subsystem] Initializing...");
 
@@ -208,18 +232,27 @@ pub fn run_audio_subsystem(to_coordinator: Sender<AudioMsg>) -> windows::core::R
         }
     }
 
-    debug!("[Audio Subsystem] Initialization complete. Listening for OS events...");
+    debug!("[Audio Subsystem] Initialization complete.");
 
     // Main Loop (Serializes all asynchronous COM callbacks)
-    for msg in internal_rx {
-        match msg {
-            InternalAudioMsg::AppOpenedIncoming(session) => {
-                let _ = manager.add_session(session, internal_tx.clone());
+    loop {
+        select!{
+            // internal messages containing audio events
+            recv(internal_rx) -> msg => {
+                match msg.expect("[Audio Subsystem] Critical error reading message from OS listener.") {
+                    InternalAudioMsg::AppOpenedIncoming(session) => {
+                        let _ = manager.add_session(session, internal_tx.clone());
+                    }
+                    InternalAudioMsg::AppClosed { pid } => manager.remove_session(pid),
+                    InternalAudioMsg::VolumeChanged { pid, volume, muted } => {
+                        // send message directly bc manager does not track volume directly
+                        let _ = manager.to_coordinator.send(AudioMsg::VolumeChanged { pid, volume, muted }); 
+                    }
+                }
             }
-            InternalAudioMsg::AppClosed { pid } => manager.remove_session(pid),
-            InternalAudioMsg::VolumeChanged { pid, volume, muted } => {
-                // send message directly bc manager does not track volume directly
-                let _ = manager.to_coordinator.send(AudioMsg::VolumeChanged { pid, volume, muted }); 
+            // external messages containing commands
+            recv(from_coordinator) -> msg => {
+                manager.change_volume(msg.expect("[Audio Subsystem] Critical error reading message from coordinator."));
             }
         }
     }
