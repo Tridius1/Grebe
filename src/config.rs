@@ -19,8 +19,39 @@ pub struct GrebeConfig {
 
 // Public init function, should only be called once (in main.rs)
 pub fn init() {
+    // Read config if exists
+    let config_str = find_config();
+    // Parse config and populate GrebeConfig struct
+    let parsed_config: GrebeConfig =  match config_str {
+        Some(cfg_str) => {
+            let parsed = toml::from_str(&cfg_str);
+            match parsed {
+                Ok(grebe_config) => grebe_config,
+                Err(e) => {
+                    eprintln!("[Config] Failed to deserialize config.toml:\n{}", e);
+                    toml::from_str(create_default_config(true)).expect("[Config] Failed to deserialize default config")
+                }
+            }
+        },
+        None => {
+            eprintln!("[Config] Could not find config.toml");
+            toml::from_str(create_default_config(false)).expect("[Config] Failed to deserialize default config")
+        }
+    };
+    
+    
+    CONFIG.set(parsed_config).expect("[Config] Global config already initialized");
+}
+
+// Public function; returns a static reference
+pub fn get() -> &'static GrebeConfig {
+    CONFIG.get().expect("Config is not initialized")
+}
+
+// Find config.toml 
+fn find_config() -> Option<String> {
     // Find config.toml; loop through parent directories
-    let mut current_dir = env::current_exe().ok().expect("[Config] Critical Error: Could not aquire current directory.");
+    let mut current_dir = env::current_exe().ok()?;
     current_dir.pop();
     let config_file = loop {
         let candidate = current_dir.join("config.toml");
@@ -33,17 +64,20 @@ pub fn init() {
             break None
         }
     };
-    // Read config
-    let config_str = fs::read_to_string(config_file.expect("[Config] Critical Error: Failed to find config.toml"))
-    .expect("[Config] Critical Error: Failed to read config.toml");
-        
-    // Parse config and populate GrebeConfig struct
-    let parsed_config: GrebeConfig = toml::from_str(&config_str).expect("[Config] Critical Error: Failed to parse TOML config.");
-    
-    CONFIG.set(parsed_config).expect("[Config] Global config already initialized.");
+    let config_str = fs::read_to_string(config_file?);
+    match config_str {
+        Ok(cfg_str) => Some(cfg_str),
+        Err(_) => None,
+    }
 }
 
-// Public function; returns a static reference
-pub fn get() -> &'static GrebeConfig {
-    CONFIG.get().expect("Config is not initialized.")
+fn create_default_config(config_exists: bool) -> &'static str {
+    // Includes default config in binary
+    let default_config = include_str!("default_config.toml");
+    let file_name = if config_exists {"default_config.toml"} else {"config.toml"};
+    match fs::write(file_name, default_config) {
+        Ok(()) => { eprintln!("[Config] Created default config file at {}", file_name); },
+        Err(e) => { eprintln!("[Config] Failed to create default config file: {}", e); }
+    }
+    default_config
 }

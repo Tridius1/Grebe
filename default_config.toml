@@ -1,4 +1,4 @@
-# Main project settings
+# This default config file was created automatially
 
 # Grebe Configuration
 
@@ -13,11 +13,11 @@ select_new_app = true
 
 # How many percentage points should the volume be adjusted per click
 volume_scroll_size = 5
-sdf
+
 # Reverse the effect of spinning a knob
 invert_volume = false
 invert_navigation = false
 
 
 # Enable to log additional information. Logs can be found at grebe.log
-verbose = true
+verbose = false
