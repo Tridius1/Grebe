@@ -25,7 +25,7 @@ mod config;
 mod audio;
 mod serial;
 
-const MAX_NAME_LEN: usize = 30; // size of char array that will be sent to the arduino
+const MAX_NAME_LEN: usize = 20; // size of char array that will be sent to the arduino; arduino expects 20
 const ENTRY_SIZE: usize = (MAX_NAME_LEN + 2); //size of FrameEntry in bytes; name + volume + mute
 const FRAME_SIZE: usize = (ENTRY_SIZE * 3) + 1; //size of DisplayFrame in bytes; 3 entries + 1 header byte
 
@@ -126,7 +126,7 @@ impl MixerManager {
     }
 }
 
-// one of three entrys in a frame, is exactly 32 bytes (when MAX_NAME_LEN == 30)
+// one of three entrys in a frame
 struct FrameEntry {
     pub volume: u8,
     pub muted: u8,
@@ -250,6 +250,9 @@ fn coordinator() {
                             serial::ControlMsg::AppScroll{up} => {
                                 let is_up = if cfg.invert_volume {!up} else {up};
                                 manager.scroll(is_up);
+                                // send new frame to arduino
+                                serial_write_tx.send(manager.frame().to_bytes());
+
                             }
                             serial::ControlMsg::VolumeScroll{up} => {
                                 let is_up = if cfg.invert_volume {!up} else {up};
