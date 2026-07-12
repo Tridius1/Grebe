@@ -2,7 +2,6 @@ use std::fs;
 use serde::Deserialize;
 use std::sync::OnceLock;
 use std::env;
-use std::path::PathBuf;
 
 // Global config struct so threads and modules can all use this (modules use: "use crate::config;")
 static CONFIG: OnceLock<GrebeConfig> = OnceLock::new();

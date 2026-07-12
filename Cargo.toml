@@ -1,6 +1,6 @@
 [package]
 name = "Grebe"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 
 [package.metadata.winres]
@@ -16,7 +16,6 @@ serde = { version = "1.0.228", features = ["derive"] }
 serialport = "4.9.0"
 toml = "1.1.2"
 tray-icon = "0.24.1"
-viuer = "0.11.0"
 windows = { version = "0.58", features = [
     "implement",
     "Win32_Media_Audio",
@@ -35,3 +34,9 @@ winit = "0.30.13"
 [build-dependencies]
 winres = "0.1.12"
 
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1 # Single thread optimization
+panic = "abort" # Don't unwind the stack, just kill everything
+opt-level = "s"

@@ -1,6 +1,4 @@
-#![allow(unused)]
-
-//#![windows_subsystem = "windows"] // Uncomment this to hide the console
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // Hides console for release
 
 use std::error::Error;
 use winit::{
@@ -14,9 +12,9 @@ use tray_icon::{
     Icon, TrayIcon, TrayIconBuilder, TrayIconEvent
 };
 use std::thread;
-use crossbeam_channel::{unbounded, select, Sender};
-use log::{info, debug, error};
-use env_logger::{Builder, Target, WriteStyle};
+use crossbeam_channel::{select, Sender};
+use log::{debug, error};
+use env_logger::{Builder, Target};
 use std::io::{stderr, IsTerminal};
 use std::fs::File;
 use std::collections::BTreeMap;
@@ -26,7 +24,7 @@ mod audio;
 mod serial;
 
 const MAX_NAME_LEN: usize = 20; // size of char array that will be sent to the arduino; arduino expects 20
-const ENTRY_SIZE: usize = (MAX_NAME_LEN + 2); //size of FrameEntry in bytes; name + volume + mute
+const ENTRY_SIZE: usize = MAX_NAME_LEN + 2; //size of FrameEntry in bytes; name + volume + mute
 const FRAME_SIZE: usize = (ENTRY_SIZE * 3) + 1; //size of DisplayFrame in bytes; 3 entries + 1 header byte
 
 
@@ -144,12 +142,12 @@ impl MixerManager {
                 let delta = if up { config::get().volume_scroll_size as f32 } else { -1.0 * config::get().volume_scroll_size as f32 };
                 let f_delta = delta / 100.0;
                 let new_vol = MixerManager::convert_volume_u_f(status.volume) + f_delta;
-                self.control_channel.send(audio::SetAudio::Volume{ pid: *key, to: new_vol.clamp(0.0, 1.0) });
+                let _ = self.control_channel.send(audio::SetAudio::Volume{ pid: *key, to: new_vol.clamp(0.0, 1.0) });
             }
             serial::ControlMsg::MuteToggle => {
-                self.control_channel.send(audio::SetAudio::Mute{ pid: *key , on: !status.muted });
+                let _ = self.control_channel.send(audio::SetAudio::Mute{ pid: *key , on: !status.muted });
             }
-            other => {unreachable!()}
+            _other => {unreachable!()}
         }
     }
 }
@@ -251,8 +249,8 @@ fn coordinator() {
     // Spawn threads
     debug!("[Coordinator] Spawning threads");
     // Audio thread
-    let audio_handle = thread::spawn(move || { audio::run_audio_subsystem(audio_change_tx, audio_command_rx); });
-    let serial_handle = thread::spawn(move || { serial::run_serial_subsystem(serial_read_tx, serial_write_rx) });
+    let audio_handle = thread::spawn(move || { let _ = audio::run_audio_subsystem(audio_change_tx, audio_command_rx); });
+    let _serial_handle = thread::spawn(move || { serial::run_serial_subsystem(serial_read_tx, serial_write_rx) });
 
     // Main Loop
     loop {
@@ -263,7 +261,7 @@ fn coordinator() {
                         debug!("[Coordinator] Audio message: {:?}", message);
                         manager.audio_update(message); // update the manager
                         // send new frame to arduino
-                        serial_write_tx.send(manager.frame().to_bytes());
+                        let _ = serial_write_tx.send(manager.frame().to_bytes());
                     }
                     Err(_) => {
                         error!("[Coordinator] Audio thread disconnected! Breaking coordinator loop.");
@@ -280,15 +278,14 @@ fn coordinator() {
                                 let is_up = if cfg.invert_volume {!up} else {up};
                                 manager.scroll(is_up);
                                 // send new frame to arduino
-                                serial_write_tx.send(manager.frame().to_bytes());
+                                let _ = serial_write_tx.send(manager.frame().to_bytes());
 
                             }
                             serial::ControlMsg::VolumeScroll{up} => {
-                                let is_up = if cfg.invert_volume {!up} else {up};
+                                let _is_up = if cfg.invert_volume {!up} else {up};
                                 manager.set_audio(command);
                             }
                             serial::ControlMsg::MuteToggle => {manager.set_audio(command);},
-                            serial::ControlMsg::NewFrame => {}
                         }
                     }
                     Err(_) => {
@@ -333,7 +330,7 @@ enum UserEvent {
 
 // Handles the way this app interacts with windows user interface
 struct App {
-    tray_icon: TrayIcon,
+    _tray_icon: TrayIcon,
     quit_id: MenuId,
 }
 
@@ -360,7 +357,7 @@ impl ApplicationHandler<UserEvent> for App {
                     event_loop.exit();
                 }
             }
-            UserEvent::Tray(tray_event) => {
+            UserEvent::Tray(_tray_event) => {
                 // Do nothing, this is called whenever the tray icon is moused over
             }
         }
@@ -425,7 +422,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     
     tray_menu.append(&quit_item)?;
 
-    let mut tray_icon = TrayIconBuilder::new()
+    let tray_icon = TrayIconBuilder::new()
             .with_menu(Box::new(tray_menu))
             .with_tooltip("Grebe Audio Mixer")
             .with_icon(get_icon()) 
@@ -434,7 +431,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Instantiate App and associated event hooks
     let mut app = App {
-        tray_icon: tray_icon,
+        _tray_icon: tray_icon,
         quit_id,
     };
     

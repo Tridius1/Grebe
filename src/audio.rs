@@ -1,5 +1,4 @@
-use env_logger::Builder;
-use log::{info, debug, error};
+use log::debug;
 use crossbeam_channel::{Sender, Receiver, select};
 use std::collections::BTreeMap;
 use std::ffi::OsString;
@@ -127,8 +126,8 @@ impl IAudioSessionEvents_Impl for AppEventListener_Impl {
 // STATE MANAGEMENT 
 // ==========================================
 struct TrackedSession {
-    pub pid: u32,
-    pub name: String,
+    pub _pid: u32,
+    pub _name: String,
     pub control: IAudioSessionControl,
     _listener: IAudioSessionEvents, // Keeps listener alive in memory (for windows nonsense)
 }
@@ -169,8 +168,8 @@ impl AudioStateManager {
         let mute = unsafe { volume_control.GetMute()? };
 
         self.sessions.insert(pid, TrackedSession {
-            pid,
-            name: name.clone(),
+            _pid: pid,
+            _name: name.clone(),
             control: session,
             _listener: app_listener,
         });
@@ -252,10 +251,8 @@ pub fn run_audio_subsystem(to_coordinator: Sender<AudioMsg>, from_coordinator: R
             }
             // external messages containing commands
             recv(from_coordinator) -> msg => {
-                manager.change_volume(msg.expect("[Audio Subsystem] Critical error reading message from coordinator."));
+                let _ = manager.change_volume(msg.expect("[Audio Subsystem] Critical error reading message from coordinator."));
             }
         }
     }
-
-    Ok(())
 }
