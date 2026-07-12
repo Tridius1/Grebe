@@ -1,7 +1,11 @@
 [package]
 name = "Grebe"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2024"
+
+[package.metadata.winres]
+OriginalFilename = "Grebe.exe"
+LegalCopyright = "Copyright © 2026"
 
 [dependencies]
 crossbeam-channel = "0.5.16"
@@ -27,4 +31,7 @@ windows = { version = "0.58", features = [
 ]}
 windows-core = "0.58"
 winit = "0.30.13"
+
+[build-dependencies]
+winres = "0.1.12"
 

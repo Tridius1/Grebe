@@ -19,3 +19,4 @@ rustc-ice-*.txt
 # Ignore environment variables
 .env
 *.log
+resource.rc
