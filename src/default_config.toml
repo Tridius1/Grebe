@@ -26,5 +26,6 @@ invert_volume = false
 invert_navigation = false
 
 
-# Enable to log additional information. Logs can be found at grebe.log
+# Enable to log additional information
+# Logs can be found at grebe.log
 verbose = false
