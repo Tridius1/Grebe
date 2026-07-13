@@ -374,16 +374,7 @@ impl ApplicationHandler<UserEvent> for App {
 
 // Runs windows event loop
 fn main() -> Result<(), Box<dyn Error>> {
-    // Init global config
-    config::init();
-    let cfg = config::get();
-
     // Set up logger
-    let log_level = if cfg.verbose {
-        log::LevelFilter::Debug
-    } else {
-        log::LevelFilter::Info
-    };
     let mut log_builder = Builder::new();
     // Check if stderr is attached
     if stderr().is_terminal() {
@@ -398,7 +389,16 @@ fn main() -> Result<(), Box<dyn Error>> {
             log_builder.target(Target::Pipe(Box::new(std::io::sink())));
         }
     }
-    log_builder.filter_level(log_level).init();
+    log_builder.filter_level(log::LevelFilter::Debug).init();
+
+    // Init global config
+    config::init();
+    let cfg = config::get();
+
+    // Set logging level from config
+    if !cfg.verbose {
+        log::set_max_level(log::LevelFilter::Info)
+    } 
 
     debug!("{:?}", cfg);
 

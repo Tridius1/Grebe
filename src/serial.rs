@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use serialport;
 use serialport::SerialPort;
 use std::time::{Duration, Instant};
-use log::{info, debug};
+use log::{info, debug, error};
 
 use crate::config;
 
@@ -62,7 +62,7 @@ fn serial_subsystem(port: Box<dyn SerialPort>, to_coordinator: Sender<ControlMsg
 	// spawn reader and writer
 	let port_clone = match port.try_clone() {
 		Ok(cp) => cp,
-		Err(e) => { eprintln!("[Serial Subsystem] Failed to clone serial port for reader. Error: {}", e); return }
+		Err(e) => { error!("[Serial Subsystem] Failed to clone serial port for reader: {}", e); return }
 	};
 	let rd_run_flag = Arc::clone(&running_flag);
 	let wr_run_flag = Arc::clone(&running_flag);
@@ -78,7 +78,7 @@ fn serial_subsystem(port: Box<dyn SerialPort>, to_coordinator: Sender<ControlMsg
 					Ok(packet) => {
 						let _ = writer_packets_tx.send(packet);
 					}
-					Err(e) => { eprintln!("[Serial Subsystem] Error reading message from Coordinator: {}", e) }
+					Err(e) => { error!("[Serial Subsystem] Error reading message from Coordinator: {}", e) }
 				}
 			}
 			recv(reader_rx) -> msg => {
@@ -94,7 +94,7 @@ fn serial_subsystem(port: Box<dyn SerialPort>, to_coordinator: Sender<ControlMsg
 							SerialRecieved::MuteToggle => { let _ = to_coordinator.send(ControlMsg::MuteToggle); }
 						}
 					}
-					Err(e) => { debug!("[Serial Subsystem] Error reading message from Serial Reader: {}", e); break; }
+					Err(e) => { error!("[Serial Subsystem] Error reading message from Serial Reader: {}", e); break; }
 				}
 			}
 		}
@@ -103,7 +103,7 @@ fn serial_subsystem(port: Box<dyn SerialPort>, to_coordinator: Sender<ControlMsg
 	running_flag.store(false, Ordering::Relaxed);
 	let _ = reader_handle.join();
 	let _ = writer_handle.join();
-	debug!("[Serial Subsystem] A fatal error occured, threads have been shut down. Will attempt to reconnect.");
+	info!("[Serial Subsystem] Microcontroller is disconnected. Will attempt to reconnect.");
 }
 
 // wrapper function to retry connecion
@@ -134,7 +134,7 @@ pub fn run_serial_subsystem(to_coordinator: Sender<ControlMsg>, from_coordinator
 			}
 		};
 
-		debug!("[Serial Subsystem] Connected on {}.", port_name);
+		info!("[Serial Subsystem] Connected to microcontroller on {}.", port_name);
 		serial_subsystem(port, to_coordinator.clone(), from_coordinator.clone());
 	}
 }
@@ -170,7 +170,7 @@ fn serial_reader(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, r
 									std::thread::yield_now(); // If we timed out, yield and try again later
 								}
 								Err(e) => {
-									debug!("[Serial Reader] Fatal read error: {}", e);
+									error!("[Serial Reader] Fatal read error: {}", e);
 								}
 							}
 						}
@@ -202,16 +202,19 @@ fn serial_writer(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, p
 		if packet.is_some() {
 			// We have a packet, send it if it's not too soon
 			if timer.elapsed() >= Duration::from_millis(10) {
+				// Call OS to send packet over USB
 				if port.write_all(packet.clone().expect("[Serial Writer] Packet.expect failed while is_some()").as_ref()).is_err() {
 	    			debug!("[Serial Writer] Could not write to serial port.");
 	    			break;
 				}
+				// Force OS to send any remaining data and block until data has been sent
 				if let Err(err) = port.flush() {
 					debug!("[Serial Writer] Failed to flush serial port buffers: {}", err);
 					break;
 				}
 				attempt += 1;
-				timer = Instant::now() // reset the timer
+				timer = Instant::now(); // reset the timer
+				debug!("[Serial Writer] Packet written to serial port.");
 			}
 			// Just sent a packet; wait for ack and replace old packets (only send new packets)
 			select!{

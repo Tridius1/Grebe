@@ -2,6 +2,7 @@ use std::fs;
 use serde::Deserialize;
 use std::sync::OnceLock;
 use std::env;
+use log::{info, error};
 
 // Global config struct so threads and modules can all use this (modules use: "use crate::config;")
 static CONFIG: OnceLock<GrebeConfig> = OnceLock::new();
@@ -29,13 +30,13 @@ pub fn init() {
             match parsed {
                 Ok(grebe_config) => grebe_config,
                 Err(e) => {
-                    eprintln!("[Config] Failed to deserialize config.toml:\n{}", e);
+                    error!("[Config] Failed to deserialize config.toml:\n{}", e);
                     toml::from_str(create_default_config(true)).expect("[Config] Failed to deserialize default config")
                 }
             }
         },
         None => {
-            eprintln!("[Config] Could not find config.toml");
+            error!("[Config] Could not find config.toml");
             toml::from_str(create_default_config(false)).expect("[Config] Failed to deserialize default config")
         }
     };
@@ -77,8 +78,8 @@ fn create_default_config(config_exists: bool) -> &'static str {
     let default_config = include_str!("default_config.toml");
     let file_name = if config_exists {"default_config.toml"} else {"config.toml"};
     match fs::write(file_name, default_config) {
-        Ok(()) => { eprintln!("[Config] Created default config file at {}", file_name); },
-        Err(e) => { eprintln!("[Config] Failed to create default config file: {}", e); }
+        Ok(()) => { info!("[Config] Created default config file at {}", file_name); },
+        Err(e) => { info!("[Config] Failed to create default config file: {}", e); }
     }
     default_config
 }
