@@ -70,8 +70,15 @@ impl MixerManager {
     pub fn audio_update(&mut self, message: audio::AudioMsg) {
         match message {
             audio::AudioMsg::AppOpened {pid, name, volume: f_volume, muted} => {
+                // Check for an alias
+                let alias = &config::get().aliases.iter()
+                    .find_map( |(default_name, prefered_name)| {
+                        if *default_name == name { Some(prefered_name) } else { None }
+                    }).unwrap_or(&name); // return default name if no alias
+                debug!("[Coordinator] New app opened: `{}` as `{}`", name, alias);
+                // Add application entry to BTreeMap
                 self.apps.insert(pid, VolumeStatus{
-                    name,
+                    name: alias.to_string(),
                     volume: MixerManager::convert_volume_f_u(f_volume),
                     muted
                 });

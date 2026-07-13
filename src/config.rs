@@ -11,6 +11,7 @@ pub struct GrebeConfig {
     pub verbose: bool,
     pub port: String,
     pub blacklist: Vec<String>,
+    pub aliases: Vec<(String, String)>,
     pub select_new_app: bool,
     pub volume_scroll_size: u8,
     pub invert_volume: bool,

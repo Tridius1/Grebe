@@ -8,6 +8,13 @@ port = "COM3"
 # Add the name of any process you wish to be hidden
 blacklist = ["steamwebhelper", "wallpaper64", "SteelSeriesMoments", "SpotifyWidgetProvider", "GameBar", "DiscordHookHelper"]
 
+# Aliases allow displayed names of applications to differ from the name provided by Windows
+# To use a prefered name add to this list in the form ["default name", "prefered name"]
+aliases = [
+	["chrome", "Google Chrome"],
+	["firefox", "Firefox"],
+]
+
 # Automatically select newly opened applications
 select_new_app = true
 
