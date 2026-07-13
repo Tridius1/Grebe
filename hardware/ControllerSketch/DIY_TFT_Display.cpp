@@ -31,6 +31,7 @@ Display::Display(uint8_t rot) : lcd (17, 16, 26, 25, 21, 5, 27, 14, 2, 4, 15, 33
 
   lcd.begin(); // Init screen; MUST ONLY BE CALLED ONCE
   setup();
+  show_disconnected();
 }
 
 void Display::setup() {
@@ -50,9 +51,14 @@ void Display::setup() {
     COLOR_BLACK);
 }
 
+// Render a frame to the display
+// Uses LineState structs to only overwrite necessary pixels
 void Display::render_frame(DisplayFrame frame) {
   int text_height = 8 * text_size;
   int text_width = 6 * text_size;
+
+  // Clear disconnected message if needed
+  clear_disconnected();
 
   char buffer[text_len + 1] = {};
   for (int i = 0; i < 3; i++) {
@@ -116,4 +122,28 @@ void Display::render_frame(DisplayFrame frame) {
     }
     
   }
+}
+
+// Write to the display to show that the device is not connected
+void Display::show_disconnected() {
+  constexpr char* text = "NOT CONNECTED"; // 13 chars
+  lcd.setCursor(
+    (lcd.width() / 2) - (39 * text_size),
+    (lcd.height() / 2) - (4 * text_size)
+  );
+  lcd.print(text);
+  dc_shown = true;
+}
+
+// Clear disconnected message
+void Display::clear_disconnected() {
+  if (!dc_shown) {return;} // Sort circut if already clear
+  lcd.fillRect(
+    (lcd.width() / 2) - (39 * text_size),
+    (lcd.height() / 2) - (4 * text_size),
+    13 * 6 * text_size,
+    9 * text_size,
+    bk_color
+  );
+  dc_shown = false;
 }

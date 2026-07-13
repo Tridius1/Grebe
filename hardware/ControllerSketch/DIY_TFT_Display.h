@@ -40,12 +40,17 @@ class Display {
     // Last state, for efficient printing
     LineState frame_state[3] = {};
 
+    // Is a disconnected messege on screen, so we know to clear it
+    bool dc_shown = false;
+
     void setup();
 
   public:
     Display(uint8_t rot);
 
     void render_frame(DisplayFrame);
+    void show_disconnected();
+    void clear_disconnected();
 };
 
 void initScreen();
