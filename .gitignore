@@ -20,3 +20,5 @@ rustc-ice-*.txt
 .env
 *.log
 resource.rc
+default_config.toml
+config.toml
