@@ -28,8 +28,8 @@ pub fn send_notification(title: &str, message: &str) -> Result<()> {
                     <text>{}</text>
                     <text>{}</text>
                 </binding>
-                <audio silent="{}" />
             </visual>
+            <audio silent="{}" />
         </toast>"#,
         title, message, config::get().notifications.silent.to_string()
     );
