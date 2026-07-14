@@ -63,6 +63,9 @@ fn serial_subsystem(port: Box<dyn SerialPort>, to_coordinator: Sender<ControlMsg
 	// Allow microcontroller time to start up
 	std::thread::sleep(Duration::from_secs(2));
 
+	// Clear the buffers on the port
+	let _ = port.clear(serialport::ClearBuffer::All);
+
 	// spawn reader and writer
 	let port_clone = match port.try_clone() {
 		Ok(cp) => cp,
@@ -141,9 +144,6 @@ pub fn run_serial_subsystem(to_coordinator: Sender<ControlMsg>, from_coordinator
 		};
 		info!("[Serial Subsystem] Connected to microcontroller on {}.", port_name);
 
-		// Clear the buffers on the port
-		let _ = port.clear(serialport::ClearBuffer::All);
-
 		let notif_cfg = &config::get().notifications;
 
 		// Send a notification if enabled
@@ -171,13 +171,23 @@ pub fn run_serial_subsystem(to_coordinator: Sender<ControlMsg>, from_coordinator
 
 
 fn serial_reader(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, reader_tx: Sender<SerialRecieved>) {
+	// Watchdog for usb-to-serial driver crash (from hot unplugging)
+	let mut consecutive_unknown_bytes = 0;
+
 	// Single byte buffer to read headers
 	let mut single_byte_buf = [0u8; 1];
 
 	while running_flag.load(Ordering::Relaxed) {
+		// check driver crash watchdog
+		if consecutive_unknown_bytes >= 1000 {
+			info!("[Serial Reader] Received {} consecutive unknown bytes, likely usb-to-serial driver crash.", consecutive_unknown_bytes);
+			break;
+		}
+
 		match port.read(&mut single_byte_buf) {
 			Ok(0) => {
 				debug!("[Serial Reader] Device disconnected (EOF).");
+				break;
 			},
 			Ok(1) => {
 				debug!("Received byte: {:?}", single_byte_buf[0]);
@@ -195,7 +205,10 @@ fn serial_reader(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, r
 									let _ = reader_tx.send(read_command(payload[0]));
 									break;
 								}
-								Ok(_) => unreachable!(),
+								Ok(count) => {
+									error!("[Serial Reader] Expected 1 byte command, read {} bytes: {:?}", count, payload);
+									consecutive_unknown_bytes += count; // Bad bytes, update watchdog
+								}
 								Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
 									std::thread::yield_now(); // If we timed out, yield and try again later
 								}
@@ -205,7 +218,11 @@ fn serial_reader(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, r
 							}
 						}
 					},
-					_ => { debug!("[Serial Reader] Received unknown header byte:  {:?}", single_byte_buf[0]); }
+					_ => { 
+						debug!("[Serial Reader] Received unknown header byte:  {:?}", single_byte_buf[0]);
+						consecutive_unknown_bytes += 1;// Bad byte, update watchdog
+					}
+
 				}
 			},
 			Ok(_) => unreachable!(),
