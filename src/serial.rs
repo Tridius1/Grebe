@@ -60,6 +60,9 @@ fn serial_subsystem(port: Box<dyn SerialPort>, to_coordinator: Sender<ControlMsg
 	let (writer_ack_tx, writer_ack_rx) = crossbeam_channel::unbounded::<SerialRecieved>();
 	let (reader_tx, reader_rx) = crossbeam_channel::unbounded::<SerialRecieved>();
 
+	// Allow microcontroller time to start up
+	std::thread::sleep(Duration::from_secs(2));
+
 	// spawn reader and writer
 	let port_clone = match port.try_clone() {
 		Ok(cp) => cp,
@@ -136,8 +139,10 @@ pub fn run_serial_subsystem(to_coordinator: Sender<ControlMsg>, from_coordinator
 				continue;
 			}
 		};
-
 		info!("[Serial Subsystem] Connected to microcontroller on {}.", port_name);
+
+		// Clear the buffers on the port
+		let _ = port.clear(serialport::ClearBuffer::All);
 
 		let notif_cfg = &config::get().notifications;
 
@@ -223,6 +228,7 @@ fn serial_writer(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, p
 	let mut attempt: u8 = 0;
 	let mut unsent_waiting: bool = false; // flag to ensure most recent packet is sent
 	let mut timer = Instant::now(); // timer to ensure packets are not sent too fast
+
 	while running_flag.load(Ordering::Relaxed) {  
 		if packet.is_some() {
 			// We have a packet, send it if it's not too soon
