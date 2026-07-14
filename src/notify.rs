@@ -20,12 +20,6 @@ pub fn send_notification(title: &str, message: &str) -> Result<()> {
 	// Abort if adding app to start menu is disabled
 	if !config::get().add_to_start { return Ok(()); }
 
-	// 
-	//let mut silent_xml = "";
-	//if config::get().notifications.silent {
-	//	silent = "\n<audio silent="true" />";
-	//}
-
     // Define the Toast template XML template string
     let xml_string = format!(
         r#"<toast>
