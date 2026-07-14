@@ -16,7 +16,7 @@
 #define LINE_GAP 8 // pixels between lines of text (top to top)
 
 // Initialize display with custom ESP32 pin configuration; TODO: Get this from config
-// Pins used: D0=12, D1=13, D2=26, D3=25, D4=21, D5=5, D6=27, D7=14, RD=2, WR=4, CD/DC=15, CS=33, RST=32
+// Pins used: D0=17, D1=16, D2=26, D3=25, D4=21, D5=5, D6=27, D7=14, RD=2, WR=4, CD/DC=15, CS=33, RST=32
 Display::Display(uint8_t rot) : lcd (17, 16, 26, 25, 21, 5, 27, 14, 2, 4, 15, 33, 32) {
   // init settings
   rotation = rot;
