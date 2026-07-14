@@ -25,7 +25,24 @@ volume_scroll_size = 5
 invert_volume = false
 invert_navigation = false
 
-
 # Enable to log additional information
 # Logs can be found at grebe.log
 verbose = false
+
+# Create a shortcut in \Start Menu\Programs
+# This is necessary for notifications to appear
+add_to_start = true
+
+[notifications]
+
+# Send a notification the first time the microcontroller is connected
+on_first_connect = true
+
+# Send a notification when the microcontroller is reconnected after a disconnect
+on_reconnect = true
+
+# Send a notification when the microcontroller is disconnected
+on_disconnect = true
+
+# When true notifications show on screen but make no noise
+silent = false

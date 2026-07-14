@@ -12,6 +12,7 @@ crossbeam-channel = "0.5.16"
 env_logger = "0.11.11"
 image = "0.25.10"
 log = "0.4.33"
+mslnk = "0.1.8"
 serde = { version = "1.0.228", features = ["derive"] }
 serialport = "4.9.0"
 toml = "1.1.2"
@@ -26,6 +27,13 @@ windows = { version = "0.58", features = [
     "Win32_System_Threading",
     "Win32_Graphics_Gdi",
     "Win32_UI_Shell",
+    "UI_Notifications",
+    "Data_Xml_Dom",
+    "Win32_Storage_EnhancedStorage",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_PropertiesSystem"
 
 ]}
 windows-core = "0.58"

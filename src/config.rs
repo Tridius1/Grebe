@@ -7,7 +7,15 @@ use log::{info, error};
 // Global config struct so threads and modules can all use this (modules use: "use crate::config;")
 static CONFIG: OnceLock<GrebeConfig> = OnceLock::new();
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
+pub struct NotificationConfig {
+    pub on_first_connect: bool,
+    pub on_reconnect: bool,
+    pub on_disconnect: bool,
+    pub silent: bool
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct GrebeConfig {
     pub verbose: bool,
     pub port: String,
@@ -17,6 +25,8 @@ pub struct GrebeConfig {
     pub volume_scroll_size: u8,
     pub invert_volume: bool,
     pub invert_navigation: bool,
+    pub add_to_start: bool,
+    pub notifications: NotificationConfig
 }
 
 // Public init function, should only be called once (in main.rs)

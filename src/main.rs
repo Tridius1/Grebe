@@ -22,6 +22,7 @@ use std::collections::BTreeMap;
 mod config;
 mod audio;
 mod serial;
+mod notify;
 
 const MAX_NAME_LEN: usize = 20; // size of char array that will be sent to the arduino; arduino expects 20
 const ENTRY_SIZE: usize = MAX_NAME_LEN + 2; //size of FrameEntry in bytes; name + volume + mute
@@ -402,6 +403,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     debug!("{:?}", cfg);
 
+    // Create Start Menu shortcut if enabled
+    if cfg.add_to_start { notify::ensure_shortcut(); }
+
     // Spawn coordinator, it does all the important work
     thread::spawn( || { coordinator() } );
 
@@ -447,3 +451,5 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     Ok(())
 }
+
+

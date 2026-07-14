@@ -7,6 +7,7 @@ use serialport::SerialPort;
 use std::time::{Duration, Instant};
 use log::{info, debug, error};
 
+use crate::notify;
 use crate::config;
 
 // Header byte when sending frames
@@ -104,12 +105,14 @@ fn serial_subsystem(port: Box<dyn SerialPort>, to_coordinator: Sender<ControlMsg
 	let _ = reader_handle.join();
 	let _ = writer_handle.join();
 	info!("[Serial Subsystem] Microcontroller is disconnected. Will attempt to reconnect.");
+
 }
 
 // wrapper function to retry connecion
 pub fn run_serial_subsystem(to_coordinator: Sender<ControlMsg>, from_coordinator: Receiver<FramePacket>) {
 	let port_name = config::get().port.clone();
 	let mut retry_timeout = Duration::from_millis(500);
+	let mut first_connect = true;
 
 	loop {
 		let port_result = serialport::new(&port_name, 921600).timeout(Duration::from_millis(10)).open();
@@ -127,7 +130,7 @@ pub fn run_serial_subsystem(to_coordinator: Sender<ControlMsg>, from_coordinator
                     thread::sleep(Duration::from_millis(100));
                 }
                 // Increase timeout for exp backoff, max 10 seconds
-				if retry_timeout < Duration::from_secs(10) {
+				if retry_timeout < Duration::from_secs(7) {
 					retry_timeout = retry_timeout * 2;
 				}
 				continue;
@@ -135,7 +138,29 @@ pub fn run_serial_subsystem(to_coordinator: Sender<ControlMsg>, from_coordinator
 		};
 
 		info!("[Serial Subsystem] Connected to microcontroller on {}.", port_name);
+
+		let notif_cfg = &config::get().notifications;
+
+		// Send a notification if enabled
+		if (notif_cfg.on_first_connect && first_connect) || (notif_cfg.on_reconnect && !first_connect) {
+			let body = format!("Communicating with mixer on {}", port_name);
+			if let Err(e) = notify::send_notification("Mixer Connected", &body) {
+	        	error!("Failed to send notification: {:?}", e);
+	    	}
+	    }
+	    first_connect = false;
+
+	    // Start the subsystem
 		serial_subsystem(port, to_coordinator.clone(), from_coordinator.clone());
+
+		// Disconnected; send a notification if enabled
+		if notif_cfg.on_disconnect {
+			let body = format!("Waiting for mixer to reconnect on {}", port_name);
+			if let Err(e) = notify::send_notification("Mixer Disconnected", &body) {
+	        	error!("Failed to send notification: {:?}", e);
+	    	}
+		}
+
 	}
 }
 
@@ -175,7 +200,7 @@ fn serial_reader(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, r
 							}
 						}
 					},
-					_ => { debug!("[Serial Reader] Recived uknown header byte:  {:?}", single_byte_buf[0]); }
+					_ => { debug!("[Serial Reader] Received unknown header byte:  {:?}", single_byte_buf[0]); }
 				}
 			},
 			Ok(_) => unreachable!(),
