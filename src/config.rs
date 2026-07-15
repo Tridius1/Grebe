@@ -12,7 +12,8 @@ pub struct NotificationConfig {
     pub on_first_connect: bool,
     pub on_reconnect: bool,
     pub on_disconnect: bool,
-    pub silent: bool
+    pub silent: bool,
+    pub expiration: i64
 }
 
 #[derive(Debug, Deserialize, Clone)]

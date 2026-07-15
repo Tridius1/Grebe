@@ -46,3 +46,6 @@ on_disconnect = true
 
 # When true notifications show on screen but make no noise
 silent = false
+
+# Number of seconds until notifications expire
+expiration = 15

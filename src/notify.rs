@@ -1,5 +1,6 @@
 use log::{error, debug};
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 use windows::core::{Interface, PCWSTR};
 use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
 use windows::core::{PROPVARIANT, h, HSTRING, Result};
@@ -8,6 +9,7 @@ use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_INPRO
 use windows::Win32::Storage::EnhancedStorage::PKEY_AppUserModel_ID;
 use windows::Data::Xml::Dom::XmlDocument;
 use windows::UI::Notifications::{ToastNotification, ToastNotificationManager};
+use windows::Foundation::{DateTime, PropertyValue, IReference};
 
 use crate::config;
 
@@ -40,6 +42,19 @@ pub fn send_notification(title: &str, message: &str) -> Result<()> {
 
     // Create the toast notification object from our XML layout
     let notification = ToastNotification::CreateToastNotification(&xml_doc)?;
+
+    // Calculate experation time in windows ticks
+    let nanos_since_epoch = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let now_windows_ticks = (nanos_since_epoch / 100) + 116_444_736_000_000_000;
+    let exp_time_ticks = now_windows_ticks as i64 + ( 10_000_000 * config::get().notifications.expiration );
+    let exp_datetime = DateTime{ UniversalTime: exp_time_ticks};
+
+    // Create Property Value for expiration time
+    let dt_prop_val = PropertyValue::CreateDateTime(exp_datetime)?;
+    // Cast Property Value to IReference
+    let dt_iref: IReference<DateTime> = dt_prop_val.cast()?;
+    // Set notification expiration
+    let _ = notification.SetExpirationTime(&dt_iref);
     
     // Send the notification
     let notifier = ToastNotificationManager::CreateToastNotifierWithId(&APP_ID_H)?;
