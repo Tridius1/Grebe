@@ -22,13 +22,17 @@ const NAVUP_CMD: u8 = 0x04;
 const NAVDOWN_CMD: u8 = 0x05;
 const MUTE_CMD: u8 = 0x10;
 
-// newtype wrapper for frame bytes
+// Enum for all packet types that can be sent
 #[derive(Clone, Debug)]
-pub struct FramePacket(pub [u8; crate::FRAME_SIZE]);
+pub enum Packet {
+	Frame([u8; crate::FRAME_SIZE])
+}
 // allows easy writing of bytes to serial port
-impl AsRef<[u8]> for FramePacket {
+impl AsRef<[u8]> for Packet {
     fn as_ref(&self) -> &[u8] {
-        &self.0
+    	match self {
+    		Packet::Frame(bytes) => bytes
+    	}
     }
 }
 
@@ -52,11 +56,11 @@ enum SerialRecieved {
 	Error(u8)
 }
 
-fn serial_subsystem(port: Box<dyn SerialPort>, to_coordinator: Sender<ControlMsg>, from_coordinator: Receiver<FramePacket>){
+fn serial_subsystem(port: Box<dyn SerialPort>, to_coordinator: Sender<ControlMsg>, from_coordinator: Receiver<Packet>){
 	let running_flag = Arc::new(AtomicBool::new(true)); // Flag for closing child threads
 
 	// Create interal channels
-	let (writer_packets_tx, writer_packets_rx) = crossbeam_channel::unbounded::<FramePacket>();
+	let (writer_packets_tx, writer_packets_rx) = crossbeam_channel::unbounded::<Packet>();
 	let (writer_ack_tx, writer_ack_rx) = crossbeam_channel::unbounded::<SerialRecieved>();
 	let (reader_tx, reader_rx) = crossbeam_channel::unbounded::<SerialRecieved>();
 
@@ -115,7 +119,7 @@ fn serial_subsystem(port: Box<dyn SerialPort>, to_coordinator: Sender<ControlMsg
 }
 
 // wrapper function to retry connecion
-pub fn run_serial_subsystem(to_coordinator: Sender<ControlMsg>, from_coordinator: Receiver<FramePacket>) {
+pub fn run_serial_subsystem(to_coordinator: Sender<ControlMsg>, from_coordinator: Receiver<Packet>) {
 	let port_name = config::get().port.clone();
 	let mut retry_timeout = Duration::from_millis(500);
 	let mut first_connect = true;
@@ -240,8 +244,8 @@ fn serial_reader(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, r
 }
 
 
-fn serial_writer(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, packets_rx: Receiver<FramePacket>, ack_rx: Receiver<SerialRecieved>) {
-	let mut packet: Option<FramePacket> = None;
+fn serial_writer(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, packets_rx: Receiver<Packet>, ack_rx: Receiver<SerialRecieved>) {
+	let mut packet: Option<Packet> = None;
 	let mut attempt: u8 = 0;
 	let mut unsent_waiting: bool = false; // flag to ensure most recent packet is sent
 	let mut timer = Instant::now(); // timer to ensure packets are not sent too fast

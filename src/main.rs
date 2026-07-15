@@ -217,7 +217,7 @@ impl DisplayFrame {
     }
 
     // Serialize frame to send to Arduino
-    fn to_bytes(&self) -> serial::FramePacket {
+    fn to_packet(&self) -> serial::Packet {
         let mut bytes = [0u8; FRAME_SIZE];
 
         //set header
@@ -234,7 +234,7 @@ impl DisplayFrame {
             bytes[name_start..name_end].copy_from_slice(&entry.name);
         }
 
-        return serial::FramePacket(bytes)
+        return serial::Packet::Frame(bytes)
     }
 }
 
@@ -249,7 +249,7 @@ fn coordinator() {
 
     // Channels for reading and writing for serial threads
     let (serial_read_tx, serial_read_rx) = crossbeam_channel::unbounded::<serial::ControlMsg>();
-    let (serial_write_tx, serial_write_rx) = crossbeam_channel::unbounded::<serial::FramePacket>();
+    let (serial_write_tx, serial_write_rx) = crossbeam_channel::unbounded::<serial::Packet>();
 
     // Create manager
     let mut manager = MixerManager::new(audio_command_tx);
@@ -269,7 +269,7 @@ fn coordinator() {
                         debug!("[Coordinator] Audio message: {:?}", message);
                         manager.audio_update(message); // update the manager
                         // send new frame to arduino
-                        let _ = serial_write_tx.send(manager.frame().to_bytes());
+                        let _ = serial_write_tx.send(manager.frame().to_packet());
                     }
                     Err(_) => {
                         error!("[Coordinator] Audio thread disconnected! Breaking coordinator loop.");
@@ -286,7 +286,7 @@ fn coordinator() {
                                 let is_up = if cfg.invert_volume {!up} else {up};
                                 manager.scroll(is_up);
                                 // send new frame to arduino
-                                let _ = serial_write_tx.send(manager.frame().to_bytes());
+                                let _ = serial_write_tx.send(manager.frame().to_packet());
 
                             }
                             serial::ControlMsg::VolumeScroll{up} => {
