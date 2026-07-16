@@ -13,7 +13,12 @@ Display::Display() : lcd (17, 16, 26, 25, 21, 5, 27, 14, 2, 4, 15, 33, 32) {
   text_color = 0xFFFF;
   bk_color = 0x0000;
   text_len = 20;
-  side_pad = 30;
+
+  // Padding
+  true_side_pad = 30; // MUST BE >3 TO PREVENT UNDERFLOW
+  mid_pad = (lcd.height() / 4) - (8 * text_size);
+  true_top_pad = mid_pad / 2;
+  cycle_padding(); // Sets top_pad and side_pad
 
   // Load settings from persistant storage
   stored.begin("Display", true); // open storage in read only
@@ -28,19 +33,36 @@ Display::Display() : lcd (17, 16, 26, 25, 21, 5, 27, 14, 2, 4, 15, 33, 32) {
   }
   stored.end();
 
-
-  // Calculate padding
-  mid_pad = (lcd.height() / 4) - (8 * text_size);
-  top_pad = mid_pad / 2;
-
   lcd.begin(); // Init screen; MUST ONLY BE CALLED ONCE
-  setup();
   show_disconnected();
 }
 
-void Display::setup() {
+// Adjust padding to prevent burn-in
+void Display::cycle_padding() {
+  pad_cycle = (pad_cycle + 1) % 4;
+  switch (pad_cycle) {
+    case 0:
+      side_pad = true_side_pad - 1;
+      top_pad = true_top_pad + 3;
+      break;
+    case 1:
+      side_pad = true_side_pad + 1;
+      top_pad = true_top_pad - 3;
+      break;
+    case 2:
+      side_pad = true_side_pad - 1;
+      top_pad = true_top_pad - 3;
+      break;
+    case 3:
+      side_pad = true_side_pad + 1;
+      top_pad = true_top_pad + 3;
+      break;
+  }
+}
+
+void Display::backdrop(bool fill_bk) {
   lcd.setRotation(rotation);
-  lcd.fillScreen(bk_color);
+  if (fill_bk) {lcd.fillScreen(bk_color);}
   lcd.setTextColor(text_color, bk_color);
   lcd.setTextSize(text_size);
   // Draw selection box
@@ -55,9 +77,16 @@ void Display::setup() {
     text_color);
 }
 
-// Render a frame to the display
+void Display::set_frame(DisplayFrame frame) {
+  current_frame = frame;
+  frame_exist = true;
+}
+
+// Render the current frame to the display
 // Uses LineState structs to only overwrite necessary pixels
-void Display::render_frame(DisplayFrame frame) {
+void Display::render_frame(bool render_all) {
+  if (!frame_exist) {return;} // Abort if no frame exists
+
   int text_height = 8 * text_size;
   int text_width = 6 * text_size;
 
@@ -68,7 +97,7 @@ void Display::render_frame(DisplayFrame frame) {
   for (int i = 0; i < 3; i++) {
     int y_pos = top_pad + (i * mid_pad);
     // Name
-    snprintf(buffer, sizeof(buffer), "%s", frame.slots[i].name);
+    snprintf(buffer, sizeof(buffer), "%s", current_frame.slots[i].name);
     lcd.setCursor(side_pad, y_pos);
     lcd.print(buffer);
     // Clear rest of name space if needed
@@ -86,9 +115,9 @@ void Display::render_frame(DisplayFrame frame) {
 
     // Info
     
-    // If mute state changed
-    if (frame_state[i].muted != frame.slots[i].muted) {
-      if (frame.slots[i].muted) {
+    // If mute state changed or rendering all
+    if (frame_state[i].muted != current_frame.slots[i].muted || render_all) {
+      if (current_frame.slots[i].muted) {
         lcd.setCursor(side_pad + 8, y_pos + text_height + 6);
         lcd.setTextSize(text_size - 1);
         lcd.print("[MUTE]");
@@ -102,12 +131,12 @@ void Display::render_frame(DisplayFrame frame) {
           bk_color
         );
       }
-      frame_state[i].muted = frame.slots[i].muted;
+      frame_state[i].muted = current_frame.slots[i].muted;
     }
     
-    int volume_state = (frame.slots[i].name[0] == '\0') ? -1 : frame.slots[i].volume; // negate state means do not draw
-    // if volume changed
-    if (frame_state[i].volume != volume_state) {
+    int volume_state = (current_frame.slots[i].name[0] == '\0') ? -1 : current_frame.slots[i].volume; // negate state means do not draw
+    // if volume changed or rendering all 
+    if (frame_state[i].volume != volume_state || render_all) {
       if (volume_state < 0) {
         // Clear old volume
         lcd.fillRect(
@@ -120,7 +149,7 @@ void Display::render_frame(DisplayFrame frame) {
       } else {
         // Print new volume
         lcd.setCursor(lcd.width() - side_pad - (4 * text_width), y_pos + text_height);
-        lcd.printf("%3i%%", frame.slots[i].volume);
+        lcd.printf("%3i%%", current_frame.slots[i].volume);
       }
       frame_state[i].volume = volume_state;
     }
@@ -131,6 +160,7 @@ void Display::render_frame(DisplayFrame frame) {
 // Write to the display to show that the device is not connected
 void Display::show_disconnected() {
   if (dc_shown) {return;} // Sort circut if already shown
+  backdrop(); // Clear any existing frame
   constexpr char* text = "NOT CONNECTED"; // 13 chars
   lcd.fillRect(
     (lcd.width() / 2) - (39 * text_size) - 20,
@@ -177,7 +207,31 @@ void Display::apply_settings(DisplayConfig config) {
     stored.putUShort("bk_color", bk_color);
     stored.end();
 
-    // Redo setup
-    setup();
+    // Redo backdrop
+    backdrop();
+  }
+}
+
+// Screen-saver function to prevent burn-in
+void Display::refresh_sweep() {
+  uint16_t h = lcd.height();
+  uint16_t w = lcd.width();
+  for (uint16_t i = 0; i < h + 30; i++) {
+    int16_t ibk_line = i;
+    int16_t icolor_line = i - 15;
+    int16_t bk_line = i - 30;
+    if (ibk_line >= 0 && ibk_line < h) {lcd.writeFastHLine(0, ibk_line, w, ~bk_color);} // invert bk color
+    if (icolor_line >= 0 && icolor_line < h) {lcd.writeFastHLine(0, icolor_line, w, ~text_color);} // invert text color
+    if (bk_line >= 0 && bk_line < h) {lcd.writeFastHLine(0, bk_line, w, bk_color);} // restore bk color
+    //delayMicroseconds(500);
+  }
+  cycle_padding(); // Draw in a slightly different place
+  // ensure last state is resumed
+  if (dc_shown) {
+    dc_shown = false;
+    show_disconnected();
+  } else {
+    backdrop(false);
+    render_frame(true);
   }
 }

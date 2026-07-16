@@ -24,6 +24,10 @@ const unsigned long REQ_COOLDOWN = 100;
 // Heartbeats expected every 5 seconds
 unsigned long lastHeartbeatTime = 0;
 
+// Screen saver time check
+unsigned long lastRefreshTime;
+const unsigned long REFRESH_COOLDOWN = 1800000; // milliseconds between screen-saver refreshes (30 minutes)
+
 void send_cmd_byte(uint8_t cmd) {
   uint8_t packet[2] = {CMD_HEADER, cmd};
   Serial.write(packet, 2);
@@ -34,8 +38,6 @@ void send_ack() {
 }
 
 Display* LCD = nullptr;
-
-DisplayFrame ui_frame; // holds the current frame
 
 bool loaded_config; // Have we recived a config from PC?
 
@@ -59,6 +61,7 @@ void setup() {
   loaded_config = false;
 
   lastHeartbeatTime = millis();
+  lastRefreshTime = millis();
 }
 
 void loop() {
@@ -106,6 +109,12 @@ void loop() {
     serial_input();
   }
 
+  // Screen-saver check
+  if (now - lastRefreshTime >= REFRESH_COOLDOWN) {
+    LCD -> refresh_sweep();
+    lastRefreshTime = millis();
+  }
+
   delay(1);
 }
 
@@ -118,21 +127,24 @@ void serial_input() {
   switch (incomingByte) {
     case FRAME_HEADER:
       // New frame
+      DisplayFrame ui_frame;
       Serial.readBytes((char*)&ui_frame, sizeof(DisplayFrame));
       // Send ACK byte
-      Serial.write(0x06);
+      send_ack();
+      // Set the new frame
+      LCD -> set_frame(ui_frame);
       // Write new frame if config loaded
-      if (loaded_config) {LCD -> render_frame(ui_frame);}
+      if (loaded_config) {LCD -> render_frame();}
       break;
     case CONFIG_HEADER:
       // Read config
       DisplayConfig new_config;
       Serial.readBytes((char*)&new_config, sizeof(DisplayConfig));
       // Send ACK byte
-      Serial.write(0x06);
+      send_ack();
       // Set config then re-render frame
       LCD -> apply_settings(new_config);
-      LCD -> render_frame(ui_frame);
+      LCD -> render_frame();
       // Mark config loaded
       loaded_config = true;
       break;

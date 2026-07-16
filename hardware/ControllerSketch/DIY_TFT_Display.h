@@ -29,6 +29,9 @@ struct LineState {
 class Display {
   private:
     DIYables_TFT_ILI9486_Shield lcd; // the library obj used to control the display
+    // Holds the current frame
+    DisplayFrame current_frame;
+    bool frame_exist = false; // Has the current_frame field been populated?
     // Draw settings
     uint8_t rotation;
     uint8_t text_size;
@@ -37,9 +40,13 @@ class Display {
     uint16_t text_color;
 
     // Padding
+    uint16_t true_top_pad;
     uint16_t top_pad;
     uint16_t mid_pad; // this is from top of text to top of tex; it does not account for text height
+    uint16_t true_side_pad;
     uint16_t side_pad;
+    // Where in the padding cycle we sit; this cycles from 0 to 3
+    uint8_t pad_cycle = 0;
 
     // Number of chars to print to the screen
     uint8_t text_len;
@@ -53,15 +60,18 @@ class Display {
     // Persistant storage for setings
     Preferences stored;
     
-    void setup();
+    void backdrop(bool fill_bk = true);
+    void cycle_padding();
 
   public:
     Display();
-
-    void render_frame(DisplayFrame);
+    // Public drawing functions
+    void set_frame(DisplayFrame);
+    void render_frame(bool render_all = false); // draw the current frame
     void show_disconnected();
     void clear_disconnected();
     void apply_settings(DisplayConfig);
+    void refresh_sweep(); // Screen-saver function to prevent burn-in
 };
 
 void initScreen();
