@@ -293,7 +293,8 @@ fn coordinator() {
                                 let _is_up = if cfg.invert_volume {!up} else {up};
                                 manager.set_audio(command);
                             }
-                            serial::ControlMsg::MuteToggle => {manager.set_audio(command);},
+                            serial::ControlMsg::MuteToggle => {manager.set_audio(command);}
+                            serial::ControlMsg::RequestFrame => {let _ = serial_write_tx.send(manager.frame().to_packet());}
                         }
                     }
                     Err(_) => {

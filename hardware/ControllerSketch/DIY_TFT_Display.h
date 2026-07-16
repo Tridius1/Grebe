@@ -2,10 +2,17 @@
 #define DIY_TFT_LCD
 
 #include <DIYables_TFT_Shield.h>
+#include <Preferences.h>
+
+struct __attribute__((packed)) DisplayConfig {
+  bool invert;
+  uint16_t text_color;
+  uint16_t bk_color;
+};
 
 struct __attribute__((packed)) FrameEntry {
     uint8_t volume;
-    bool muted; // boolean
+    bool muted;
     char name[20];
 };
 
@@ -43,14 +50,18 @@ class Display {
     // Is a disconnected messege on screen, so we know to clear it
     bool dc_shown = false;
 
+    // Persistant storage for setings
+    Preferences stored;
+    
     void setup();
 
   public:
-    Display(uint8_t rot);
+    Display();
 
     void render_frame(DisplayFrame);
     void show_disconnected();
     void clear_disconnected();
+    void apply_settings(DisplayConfig);
 };
 
 void initScreen();

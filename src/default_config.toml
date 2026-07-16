@@ -44,8 +44,18 @@ on_reconnect = true
 # Send a notification when the microcontroller is disconnected
 on_disconnect = true
 
-# When true notifications show on screen but make no noise
+# When true notifications show on screen but make no sound
 silent = false
 
 # Number of seconds until notifications expire
 expiration = 15
+
+
+[display]
+
+# Flip the display upside-down
+invert = false
+
+# Use standard hex colors with the 0x prefix
+background_color = 0x000000
+text_color = 0xFFFFFF

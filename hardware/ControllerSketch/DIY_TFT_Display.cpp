@@ -1,30 +1,34 @@
 
 #include <Arduino.h>
 #include "DIY_TFT_Display.h"
-#include <DIYables_TFT_Shield.h> // DIYables Screen Library
-
-// Standard 16-bit RGB565 color definitions
-#define COLOR_BLACK   0x0000
-#define COLOR_BLUE    0x001F
-#define COLOR_RED     0xF800
-#define COLOR_GREEN   0x07E0
-#define COLOR_CYAN    0x07FF
-#define COLOR_MAGENTA 0xF81F
-#define COLOR_YELLOW  0xFFE0
-#define COLOR_WHITE   0xFFFF
 
 #define LINE_GAP 8 // pixels between lines of text (top to top)
 
 // Initialize display with custom ESP32 pin configuration; TODO: Get this from config
 // Pins used: D0=17, D1=16, D2=26, D3=25, D4=21, D5=5, D6=27, D7=14, RD=2, WR=4, CD/DC=15, CS=33, RST=32
-Display::Display(uint8_t rot) : lcd (17, 16, 26, 25, 21, 5, 27, 14, 2, 4, 15, 33, 32) {
-  // init settings
-  rotation = rot;
+Display::Display() : lcd (17, 16, 26, 25, 21, 5, 27, 14, 2, 4, 15, 33, 32) {
+  // init settings to defaults
+  rotation = 1;
   text_size = 3;
-  text_color = COLOR_BLACK;
-  bk_color = COLOR_CYAN;
+  text_color = 0xFFFF;
+  bk_color = 0x0000;
   text_len = 20;
   side_pad = 30;
+
+  // Load settings from persistant storage
+  stored.begin("Display", true); // open storage in read only
+  if (stored.isKey("rotation")) {
+    rotation = stored.getUChar("rotation");
+  }
+  if (stored.isKey("text_color")) {
+    text_color = stored.getUShort("text_color");
+  }
+  if (stored.isKey("bk_color")) {
+    bk_color = stored.getUShort("bk_color");
+  }
+  stored.end();
+
+
   // Calculate padding
   mid_pad = (lcd.height() / 4) - (8 * text_size);
   top_pad = mid_pad / 2;
@@ -48,7 +52,7 @@ void Display::setup() {
     lcd.width() - side_pad, 
     box_bot - box_top, 
     10, 
-    COLOR_BLACK);
+    text_color);
 }
 
 // Render a frame to the display
@@ -146,4 +150,26 @@ void Display::clear_disconnected() {
     bk_color
   );
   dc_shown = false;
+}
+
+// Apply settings from DisplayConfig
+void Display::apply_settings(DisplayConfig config) {
+  uint8_t new_rotation = 1 + ((uint8_t) config.invert * 2);
+  // Did anything change?
+  if (new_rotation != rotation || config.text_color != text_color || config.bk_color != bk_color) {
+    // Something changed
+    rotation = new_rotation;
+    text_color = config.text_color;
+    bk_color = config.bk_color;
+
+    // Save settings to persistant storage
+    stored.begin("Display", false); // open storage in read/write
+    stored.putUChar("rotation", rotation);
+    stored.putUShort("text_color", text_color);
+    stored.putUShort("bk_color", bk_color);
+    stored.end();
+
+    // Redo setup
+    setup();
+  }
 }

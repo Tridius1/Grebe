@@ -10,28 +10,32 @@ use log::{info, debug, error};
 use crate::notify;
 use crate::config;
 
-// Header byte when sending frames
+// Header bytes
 pub const FRAME_HEADER: u8 = 0xBB;
-const ACK_BYTE: u8 = 0x06;
+pub const CONFIG_HEADER: u8 = 0xCC;
 const COMMAND_HEADER: u8 = 0xAA;
 
 // Command bytes
+const ACK_BYTE: u8 = 0x06;
 const VOLUP_CMD: u8 = 0x02;
 const VOLDOWN_CMD: u8 = 0x03;
 const NAVUP_CMD: u8 = 0x04;
 const NAVDOWN_CMD: u8 = 0x05;
 const MUTE_CMD: u8 = 0x10;
+const CONFIG_REQ: u8 = 0x60;
 
 // Enum for all packet types that can be sent
 #[derive(Clone, Debug)]
 pub enum Packet {
-	Frame([u8; crate::FRAME_SIZE])
+	Frame([u8; crate::FRAME_SIZE]),
+	Config([u8; crate::config::CONFIG_SIZE])
 }
 // allows easy writing of bytes to serial port
 impl AsRef<[u8]> for Packet {
     fn as_ref(&self) -> &[u8] {
     	match self {
-    		Packet::Frame(bytes) => bytes
+    		Packet::Frame(bytes) => bytes,
+    		Packet::Config(bytes) => bytes
     	}
     }
 }
@@ -42,6 +46,7 @@ pub enum ControlMsg {
     AppScroll { up: bool }, // up is true, down is false
     VolumeScroll { up: bool }, // up is true, down is false
     MuteToggle,
+    RequestFrame
 }
 
 // Internal messeges (sent between serial subsystem and reader/writer threads)
@@ -53,6 +58,7 @@ enum SerialRecieved {
 	NavUp,
 	NavDown,
 	MuteToggle,
+	RequestConfig,
 	Error(u8)
 }
 
@@ -97,12 +103,18 @@ fn serial_subsystem(port: Box<dyn SerialPort>, to_coordinator: Sender<ControlMsg
 					Ok(received) => {
 						match received {
 							SerialRecieved::Acknowledge => { let _ = writer_ack_tx.send(received); }
-							SerialRecieved::Error(b) => { info!("[Serial Subsystem] Uknown command byte:{:?}", b); }
+							SerialRecieved::Error(b) => { info!("[Serial Subsystem] Unknown command byte:{:#X?}", b); }
 							SerialRecieved::VolUp => { let _ = to_coordinator.send(ControlMsg::VolumeScroll { up: true }); }
 							SerialRecieved::VolDown => { let _ = to_coordinator.send(ControlMsg::VolumeScroll { up: false }); }
 							SerialRecieved::NavUp => { let _ = to_coordinator.send(ControlMsg::AppScroll { up: true }); }
 							SerialRecieved::NavDown => { let _ = to_coordinator.send(ControlMsg::AppScroll { up: false }); }
 							SerialRecieved::MuteToggle => { let _ = to_coordinator.send(ControlMsg::MuteToggle); }
+							SerialRecieved::RequestConfig => {
+								debug!("[Serial Subsystem] Config requested by microcontroller.");
+								let config_packet = config::get().display.to_packet();
+								let _ = writer_packets_tx.send(config_packet);
+								let _ = to_coordinator.send(ControlMsg::RequestFrame);
+							}
 						}
 					}
 					Err(e) => { error!("[Serial Subsystem] Error reading message from Serial Reader: {}", e); break; }
@@ -194,7 +206,7 @@ fn serial_reader(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, r
 				break;
 			},
 			Ok(1) => {
-				debug!("Received byte: {:?}", single_byte_buf[0]);
+				debug!("Received byte: {:#X?}", single_byte_buf[0]);
 				// match byte to headers
 				match single_byte_buf[0] {
 					ACK_BYTE => {
@@ -210,7 +222,7 @@ fn serial_reader(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, r
 									break;
 								}
 								Ok(count) => {
-									error!("[Serial Reader] Expected 1 byte command, read {} bytes: {:?}", count, payload);
+									error!("[Serial Reader] Expected 1 byte command, read {} bytes: {:#X?}", count, payload);
 									consecutive_unknown_bytes += count; // Bad bytes, update watchdog
 								}
 								Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
@@ -223,7 +235,7 @@ fn serial_reader(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, r
 						}
 					},
 					_ => { 
-						debug!("[Serial Reader] Received unknown header byte:  {:?}", single_byte_buf[0]);
+						debug!("[Serial Reader] Received unknown header byte:  {:#X?}", single_byte_buf[0]);
 						consecutive_unknown_bytes += 1;// Bad byte, update watchdog
 					}
 
@@ -246,6 +258,7 @@ fn serial_reader(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, r
 
 fn serial_writer(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, packets_rx: Receiver<Packet>, ack_rx: Receiver<SerialRecieved>) {
 	let mut packet: Option<Packet> = None;
+	let mut next_packet: Option<Packet> = None;
 	let mut attempt: u8 = 0;
 	let mut unsent_waiting: bool = false; // flag to ensure most recent packet is sent
 	let mut timer = Instant::now(); // timer to ensure packets are not sent too fast
@@ -274,9 +287,16 @@ fn serial_writer(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, p
 				recv(packets_rx) -> new_packet => {
 					match new_packet {
 			        	Ok(p) => {
-							debug!("[Serial Writer] Replaced old packet before acknowledgment.");
-							packet = Some(p);
-							unsent_waiting = true; // Make sure this new packet is sent
+			        		if std::mem::discriminant(&packet.clone().unwrap()) == std::mem::discriminant(&p) {
+			        			// variants match ; replace old packet
+								packet = Some(p);
+								unsent_waiting = true; // Make sure this new packet is sent
+								debug!("[Serial Writer] Replaced old packet before acknowledgment.");
+							} else {
+								// variants do not match ; queue new packet
+								next_packet = Some(p);
+								debug!("[Serial Writer] Queued new packet.");
+							}
 			        	}
 			        	Err(e) => {
 			        		debug!("[Serial Writer] Error receiving packets from Serial Subsystem: {}", e);
@@ -291,7 +311,8 @@ fn serial_writer(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, p
 						// If a packet has replaced the last one and sit unsent it should be sent on the next loop, not cleared
 						unsent_waiting = false;
 					} else {
-						packet = None;
+						// Move queued packet, if one exists
+						packet = next_packet.take();
 					}
 				}
 				// timeout
@@ -334,6 +355,9 @@ fn read_command(cmd_byte: u8) -> SerialRecieved {
 		}
 		MUTE_CMD => {
 			return SerialRecieved::MuteToggle
+		}
+		CONFIG_REQ => {
+			return SerialRecieved::RequestConfig
 		}
 	    b => {
 	    	return SerialRecieved::Error(b)
