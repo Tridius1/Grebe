@@ -15,10 +15,14 @@
 #define MUTE_CMD 0x10
 #define CONFIG_REQ 0x60
 
+#define HEARTBEAT 0xEE
+
 // Wait before resending requests
 unsigned long lastReqTime = 0;
 const unsigned long REQ_COOLDOWN = 100;
 
+// Heartbeats expected every 5 seconds
+unsigned long lastHeartbeatTime = 0;
 
 void send_cmd_byte(uint8_t cmd) {
   uint8_t packet[2] = {CMD_HEADER, cmd};
@@ -53,12 +57,20 @@ void setup() {
   initEncoders();
 
   loaded_config = false;
+
+  lastHeartbeatTime = millis();
 }
 
 void loop() {
+  unsigned long now = millis();
+  // Check if heartbeats are missing
+  if (now - lastHeartbeatTime >= 15000) {
+    // 15 seconds = 5 missed heartbeats
+    LCD -> show_disconnected();
+  }
+
   // Config
   if (!loaded_config) {
-    unsigned long now = millis();
     if (now - lastReqTime >= REQ_COOLDOWN) {
       send_cmd_byte(CONFIG_REQ);
       lastReqTime = now;
@@ -93,6 +105,7 @@ void loop() {
   if (Serial.available() > 0) {
     serial_input();
   }
+
   delay(1);
 }
 
@@ -122,9 +135,14 @@ void serial_input() {
       LCD -> render_frame(ui_frame);
       // Mark config loaded
       loaded_config = true;
-    default:
       break;
+    case HEARTBEAT:
+      break;
+    default:
+      return;
   }
+  // Any known signal counts as a heartbeat
+  lastHeartbeatTime = millis();
 }
 
 

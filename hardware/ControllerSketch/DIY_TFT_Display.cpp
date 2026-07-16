@@ -130,7 +130,15 @@ void Display::render_frame(DisplayFrame frame) {
 
 // Write to the display to show that the device is not connected
 void Display::show_disconnected() {
+  if (dc_shown) {return;} // Sort circut if already shown
   constexpr char* text = "NOT CONNECTED"; // 13 chars
+  lcd.fillRect(
+    (lcd.width() / 2) - (39 * text_size) - 20,
+    (lcd.height() / 2) - (4 * text_size) - 20,
+    13 * 6 * text_size + 40,
+    9 * text_size + 40,
+    bk_color
+  );
   lcd.setCursor(
     (lcd.width() / 2) - (39 * text_size),
     (lcd.height() / 2) - (4 * text_size)

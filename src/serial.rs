@@ -24,6 +24,9 @@ const NAVDOWN_CMD: u8 = 0x05;
 const MUTE_CMD: u8 = 0x10;
 const CONFIG_REQ: u8 = 0x60;
 
+// Heartbeat byte
+const HEARTBEAT: u8 = 0xEE;
+
 // Enum for all packet types that can be sent
 #[derive(Clone, Debug)]
 pub enum Packet {
@@ -261,12 +264,19 @@ fn serial_writer(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, p
 	let mut next_packet: Option<Packet> = None;
 	let mut attempt: u8 = 0;
 	let mut unsent_waiting: bool = false; // flag to ensure most recent packet is sent
-	let mut timer = Instant::now(); // timer to ensure packets are not sent too fast
+	let mut packet_timer = Instant::now(); // timer to ensure packets are not sent too fast
+	let mut heartbeat_timer = Instant::now(); 
 
 	while running_flag.load(Ordering::Relaxed) {  
+		// Heartbeat; allow microcontroller to detect this program has shutdown
+		if heartbeat_timer.elapsed() >= Duration::from_secs(3) {
+			let _ = port.write_all(&[HEARTBEAT]); // No ack for heartbeats; closed COM port detectable on this end
+			heartbeat_timer = Instant::now();
+		}
+		// Sending packets
 		if packet.is_some() {
 			// We have a packet, send it if it's not too soon
-			if timer.elapsed() >= Duration::from_millis(10) {
+			if packet_timer.elapsed() >= Duration::from_millis(10) {
 				// Call OS to send packet over USB
 				if port.write_all(packet.clone().expect("[Serial Writer] Packet.expect failed while is_some()").as_ref()).is_err() {
 	    			debug!("[Serial Writer] Could not write to serial port.");
@@ -278,7 +288,7 @@ fn serial_writer(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, p
 					break;
 				}
 				attempt += 1;
-				timer = Instant::now(); // reset the timer
+				packet_timer = Instant::now(); // reset the timer
 				debug!("[Serial Writer] Packet written to serial port.");
 			}
 			// Just sent a packet; wait for ack and replace old packets (only send new packets)
