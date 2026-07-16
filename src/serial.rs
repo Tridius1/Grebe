@@ -196,7 +196,7 @@ fn serial_reader(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, r
 	while running_flag.load(Ordering::Relaxed) {
 		// check driver crash watchdog
 		if consecutive_unknown_bytes >= 1000 {
-			info!("[Serial Reader] Received {} consecutive unknown bytes, likely usb-to-serial driver crash.", consecutive_unknown_bytes);
+			info!("[Serial Reader] Received {} consecutive unknown bytes, possible usb-to-serial driver crash.", consecutive_unknown_bytes);
 			break;
 		}
 
