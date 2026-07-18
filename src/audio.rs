@@ -1,53 +1,78 @@
 use log::debug;
 use crossbeam_channel::{Sender, Receiver, select};
 use std::collections::BTreeMap;
-use std::ffi::OsString;
-use std::os::windows::ffi::OsStringExt;
+use std::path::Path;
 use windows::Win32::Media::Audio::*;
 use windows::Win32::System::Com::*;
-use windows::Win32::Foundation::BOOL;
-use windows::core::{Interface, GUID};
-use windows::Win32::System::Diagnostics::ToolHelp::{
-    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS
+use windows::Win32::Foundation::{BOOL, CloseHandle, MAX_PATH};
+use windows::core::{Interface, GUID, PWSTR, PCWSTR};
+use windows::Win32::System::Threading::{
+    OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
 };
+use windows::Win32::Storage::FileSystem::{GetFileVersionInfoW, GetFileVersionInfoSizeW, VerQueryValueW};
 
 use crate::config;
 
 // Helper function to resolve a PID to its executable name
 fn get_process_name(pid: u32) -> String {
     unsafe {
-        // Take a snapshot of all concurrent processes in the system
-        let snapshot = match CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) {
-            Ok(handle) => handle,
-            Err(_) => return "Unknown".to_string(),
-        };
+        // Get the exe path from the pid
+        // Open process handle
+        let process_handle = match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
+                Ok(h) => h,
+                Err(_) => return "Unknown".to_string(),
+            };
 
-        let mut entry = PROCESSENTRY32W::default();
-        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        // Buffer for path
+        let mut path_buffer = [0u16; MAX_PATH as usize];
+        let mut path_size = path_buffer.len() as u32;
 
-        // Start iterating through the snapshot
-        if Process32FirstW(snapshot, &mut entry).is_ok() {
-            loop {
-                if entry.th32ProcessID == pid {
-                    // Find the end of the null-terminated wide string (u16)
-                    let len = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(entry.szExeFile.len());
-                    // Convert the wide string array to a standard Rust String
-                    let os_str = OsString::from_wide(&entry.szExeFile[..len]);
-                    let name = os_str.to_string_lossy().into_owned();
-                    return match name.rsplit_once('.') {
-                        Some((before, _after)) => before.to_string(),
-                        None => name, // Return original if no dot exists
-                    };
-                }
-                
-                // Move to the next process in the snapshot
-                if Process32NextW(snapshot, &mut entry).is_err() {
-                    break;
-                }
+        // Querry path, path will be placed into path_buffer
+        let result = QueryFullProcessImageNameW(
+            process_handle,
+            PROCESS_NAME_WIN32, // Specifies format as C:\... style path
+            PWSTR::from_raw(path_buffer.as_mut_ptr()),
+            &mut path_size
+        );
+
+        // Close handle and unwrap
+        let _ = CloseHandle(process_handle);
+        let exe_path = match result {
+                Ok(_) => String::from_utf16_lossy(&path_buffer[..path_size as usize]),
+                Err(_) => return "Unknown".to_string(),
+            };
+
+        // Set backup name from path
+        let mut name = match Path::new(&exe_path).file_stem(){
+            Some(os_str) => String::from(os_str.to_str().unwrap_or("Unknown")),
+            None => "Unknown".to_string()
+        }; 
+
+        // Get display name from path 
+
+        // Convert path to wide windows path
+        let path_wide: Vec<u16> = exe_path.encode_utf16().chain(std::iter::once(0)).collect();
+        let mut zero = 0; // Unused but requred by GetFileVersionInfoSizeW (legacy nonsense)
+
+        // Get the size of the version info (need to alocate buffer)
+        let info_size = GetFileVersionInfoSizeW(PCWSTR::from_raw(path_wide.as_ptr()), Some(&mut zero));
+        if info_size == 0 { return "Unknown".to_string(); } // 0 size represents an error
+
+        // 2. Allocate buffer and get info
+        let mut info_buffer = vec![0u8; info_size as usize];
+        if GetFileVersionInfoW(PCWSTR::from_raw(path_wide.as_ptr()), 0, info_size, info_buffer.as_mut_ptr() as *mut _).is_ok() {
+            // Query the "FileDescription" translation block ; 040904B0 is english
+            // TODO: Query translation list first for non-english languages
+            let subblock = "\\StringFileInfo\\040904B0\\FileDescription\0".encode_utf16().collect::<Vec<u16>>();
+            let mut value_ptr = std::ptr::null_mut();
+            let mut len = 0;
+
+            if VerQueryValueW(info_buffer.as_ptr() as *const _, PCWSTR::from_raw(subblock.as_ptr()), &mut value_ptr, &mut len).as_bool() {
+                name = String::from_utf16_lossy( std::slice::from_raw_parts(value_ptr as *const u16, len as usize - 1) );
             }
         }
+        return name
     }
-    "Unknown".to_string()
 }
 
 // External messages (sent to coordinator)
