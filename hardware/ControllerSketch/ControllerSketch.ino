@@ -26,7 +26,7 @@ unsigned long lastHeartbeatTime = 0;
 
 // Screen saver time check
 unsigned long lastRefreshTime;
-const unsigned long REFRESH_COOLDOWN = 1800000; // milliseconds between screen-saver refreshes (30 minutes)
+const unsigned long REFRESH_COOLDOWN = 1200000; // milliseconds between screen-saver refreshes (20 minutes)
 
 void send_cmd_byte(uint8_t cmd) {
   uint8_t packet[2] = {CMD_HEADER, cmd};
