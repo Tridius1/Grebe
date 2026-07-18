@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // Hides console for release
 
+use std::io;
 use std::error::Error;
 use winit::{
     event_loop::{ControlFlow, EventLoop, ActiveEventLoop},
@@ -18,11 +19,15 @@ use env_logger::{Builder, Target};
 use std::io::{stderr, IsTerminal};
 use std::fs::File;
 use std::collections::BTreeMap;
+use winreg::enums::*;
+use winreg::RegKey;
 
 mod config;
 mod audio;
 mod serial;
 mod notify;
+
+const APP_NAME: &str = "GrebeVolumeMixer";
 
 const MAX_NAME_LEN: usize = 20; // size of char array that will be sent to the arduino; arduino expects 20
 const ENTRY_SIZE: usize = MAX_NAME_LEN + 2; //size of FrameEntry in bytes; name + volume + mute
@@ -344,16 +349,11 @@ struct App {
 }
 
 impl ApplicationHandler<UserEvent> for App {
-    // REQUIRED: Called when the app is resumed (mostly for mobile/web).
+    // REQUIRED: Called when the app is resumed (not used)
     fn resumed(&mut self, _event_loop: &ActiveEventLoop) {}
 
     // REQUIRED: Called for window events. We have no GUI window, so we do nothing.
-    fn window_event(
-        &mut self,
-        _event_loop: &ActiveEventLoop,
-        _window_id: WindowId,
-        _event: WindowEvent,
-    ) {}
+    fn window_event(&mut self, _event_loop: &ActiveEventLoop, _window_id: WindowId, _event: WindowEvent) {}
 
     // OPTIONAL: But crucial for us! This handles our custom Tray & Menu proxy events.
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
@@ -403,6 +403,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     } 
 
     debug!("{:?}", cfg);
+
+    // Enable or disable running on start
+    match set_startup_registry(cfg.run_on_start){
+        Ok(_) => {}
+        Err(e) => error!("[Core] Failed to set startup registry: {:?}", e)
+    }
 
     // Create Start Menu shortcut if enabled
     if cfg.add_to_start { notify::ensure_shortcut(); }
@@ -454,3 +460,23 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 
+// Launching app on startup (or disabling)
+fn set_startup_registry(enable_autostart: bool) -> io::Result<()> {
+    // Open registry key for startup apps
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let run_path = r#"Software\Microsoft\Windows\CurrentVersion\Run"#;
+    let (key, _) = hkcu.create_subkey(run_path)?;
+
+    if enable_autostart {
+        // Get exe path and create registry value
+        let exe_path = std::env::current_exe()?;
+        let reg_value = format!("\"{}\"", exe_path.to_string_lossy());
+
+        // Set reg key, will overwrite if it exists (good if app was moved)
+        key.set_value(APP_NAME, &reg_value)?;
+    } else {
+        // Remove key if disabled; silently errors if key DNE
+        let _ = key.delete_value(APP_NAME);
+    }
+    Ok(())
+}

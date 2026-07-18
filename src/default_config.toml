@@ -15,6 +15,9 @@ aliases = [
 	["firefox", "Firefox"],
 ]
 
+# Run Grebe on Windows startup
+run_on_start = false
+
 # Automatically select newly opened applications
 select_new_app = true
 
