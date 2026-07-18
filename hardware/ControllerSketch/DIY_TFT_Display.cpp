@@ -87,6 +87,8 @@ void Display::set_frame(DisplayFrame frame) {
 void Display::render_frame(bool render_all) {
   if (!frame_exist) {return;} // Abort if no frame exists
 
+  bool force = render_all || dc_shown;
+
   int text_height = 8 * text_size;
   int text_width = 6 * text_size;
 
@@ -116,7 +118,7 @@ void Display::render_frame(bool render_all) {
     // Info
     
     // If mute state changed or rendering all
-    if (frame_state[i].muted != current_frame.slots[i].muted || render_all) {
+    if (frame_state[i].muted != current_frame.slots[i].muted || force) {
       if (current_frame.slots[i].muted) {
         lcd.setCursor(side_pad + 8, y_pos + text_height + 6);
         lcd.setTextSize(text_size - 1);
@@ -136,7 +138,7 @@ void Display::render_frame(bool render_all) {
     
     int volume_state = (current_frame.slots[i].name[0] == '\0') ? -1 : current_frame.slots[i].volume; // negate state means do not draw
     // if volume changed or rendering all 
-    if (frame_state[i].volume != volume_state || render_all) {
+    if (frame_state[i].volume != volume_state || force) {
       if (volume_state < 0) {
         // Clear old volume
         lcd.fillRect(
