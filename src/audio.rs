@@ -1,4 +1,4 @@
-use log::debug;
+use log::{debug, error};
 use crossbeam_channel::{Sender, Receiver, select};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -20,7 +20,10 @@ fn get_process_name(pid: u32) -> String {
         // Open process handle
         let process_handle = match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
                 Ok(h) => h,
-                Err(_) => return "Unknown".to_string(),
+                Err(e) => {
+                    error!("[Audio Subsystem] Error opening process handle: {:?}", e);
+                    return "Unknown".to_string()
+            }
             };
 
         // Buffer for path
@@ -39,7 +42,10 @@ fn get_process_name(pid: u32) -> String {
         let _ = CloseHandle(process_handle);
         let exe_path = match result {
                 Ok(_) => String::from_utf16_lossy(&path_buffer[..path_size as usize]),
-                Err(_) => return "Unknown".to_string(),
+                Err(e) => {
+                    error!("[Audio Subsystem] Error querying process image: {:?}", e);
+                    return "Unknown".to_string()
+            }
             };
 
         // Set backup name from path
@@ -56,7 +62,11 @@ fn get_process_name(pid: u32) -> String {
 
         // Get the size of the version info (need to alocate buffer)
         let info_size = GetFileVersionInfoSizeW(PCWSTR::from_raw(path_wide.as_ptr()), Some(&mut zero));
-        if info_size == 0 { return "Unknown".to_string(); } // 0 size represents an error
+        if info_size == 0 {
+            // 0 size represents an error
+            error!("[Audio Subsystem] Error getting file info size, will return executable name");
+            return name; 
+        } 
 
         // 2. Allocate buffer and get info
         let mut info_buffer = vec![0u8; info_size as usize];
