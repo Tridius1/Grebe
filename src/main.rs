@@ -376,6 +376,12 @@ impl ApplicationHandler<UserEvent> for App {
 
 // Runs windows event loop
 fn main() -> Result<(), Box<dyn Error>> {
+    // Set working directory to location of exe
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let _ = std::env::set_current_dir(exe_dir);
+        }
+    }
     // Set up logger
     let mut log_builder = Builder::new();
     // Check if stderr is attached
