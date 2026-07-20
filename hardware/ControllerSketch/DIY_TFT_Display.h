@@ -72,6 +72,7 @@ class Display {
     void clear_disconnected();
     void apply_settings(DisplayConfig);
     void refresh_sweep(); // Screen-saver function to prevent burn-in
+    bool get_dc();
 };
 
 void initScreen();

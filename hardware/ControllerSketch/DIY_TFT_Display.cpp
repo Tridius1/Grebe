@@ -192,6 +192,11 @@ void Display::clear_disconnected() {
   dc_shown = false;
 }
 
+// Get disconnection status
+bool Display::get_dc() {
+  return dc_shown;
+}
+
 // Apply settings from DisplayConfig
 void Display::apply_settings(DisplayConfig config) {
   uint8_t new_rotation = 1 + ((uint8_t) config.invert * 2);

@@ -149,6 +149,9 @@ void serial_input() {
       loaded_config = true;
       break;
     case HEARTBEAT:
+      if (LCD -> get_dc() == false) {
+        LCD -> render_frame();
+      }
       break;
     default:
       return;
