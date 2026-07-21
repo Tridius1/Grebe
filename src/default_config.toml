@@ -1,4 +1,4 @@
-# This default config file was created automatially
+# This default configuration file was created automatically
 
 # Grebe Configuration
 
@@ -6,10 +6,10 @@
 port = "COM3"
 
 # Add the name of any process you wish to be hidden
-blacklist = ["Steam Client, WebHelper", "SpotifyWidgetProvider", "GameBar", "DiscordHookHelper"]
+blacklist = ["Steam Client WebHelper", "SpotifyWidgetProvider", "GameBar", "DiscordHookHelper"]
 
 # Aliases allow displayed names of applications to differ from the name provided by Windows
-# To use a prefered name add to this list in the form ["default name", "prefered name"]
+# To use a preferred name add to this list in the form ["default name", "preferred name"]
 aliases = [
 	["chrome", "Google Chrome"],
 	["firefox", "Firefox"],
