@@ -23,4 +23,6 @@ resource.rc
 default_config.toml
 config.toml
 src/config.rs
-/hardware/ControllerSketch/build
+
+# Ignore compiled files for hardware
+/hardware/*/build
