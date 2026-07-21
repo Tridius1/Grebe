@@ -15,7 +15,7 @@ The easiest way to get started is to use the pre-compiled binaries for both the 
 **[Download the latest compiled binaries from the Releases tab!](../../releases/latest)**
 
 ### 1. Hardware Setup
-Currently, Grebe's firmware is tailored for the **ESP32** and a **DIYables LCD**. Support for other microcontrollers and displays is planned for the future.
+Currently, Grebe's firmware is tailored for the **ESP32** and a **DIYables LCD**. Support for other microcontrollers and displays may be added but is not currently planned.
 
 **Required Components:**
 * 1x ESP32 DEVKIT V1 (or comparable microcontroller)
@@ -106,3 +106,16 @@ If you prefer to tinker, modify the codebase, or adapt the firmware for differen
       ```
 7. Select you board and port in the Arduino IDE. If you are using an ESP32 you will need to add the ESP32 boards manager. Open File -> Preferences and add `https://espressif.github.io/arduino-esp32/package_esp32_index.json` to the `Additional boards manager URLs` field.
 8. Use the Upload button in the Arduino IDE to flash your microcontroller.
+
+---
+
+## Contributing
+
+Contributions, issues, and feature requests are welcome! If you have adapted the firmware to work with a different microcontroller or display, feel free to open a Pull Request.
+
+## License
+
+This project is open-source and licensed under two separate licenses depending on the asset:
+
+* **Source Code:** All source code is licensed under the [MIT License](LICENSE).
+* **Project Icon:** The Grebe project icon is a derivative work based on a photograph by **Steve Garvie**, originally uploaded to Flickr on June 21, 2010. In accordance with the original [Creative Commons Attribution-ShareAlike 2.0 Generic (CC BY-SA 2.0)](https://creativecommons.org/licenses/by-sa/2.0/) license, this derived icon is also distributed under CC BY-SA 2.0.
