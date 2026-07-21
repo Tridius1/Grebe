@@ -19,6 +19,9 @@ use env_logger::{Builder, Target};
 use std::io::{stderr, IsTerminal};
 use std::fs::File;
 use std::collections::BTreeMap;
+use windows::core::w;
+use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS, HANDLE};
+use windows::Win32::System::Threading::CreateMutexW;
 use winreg::enums::*;
 use winreg::RegKey;
 
@@ -376,6 +379,16 @@ impl ApplicationHandler<UserEvent> for App {
 
 // Runs windows event loop
 fn main() -> Result<(), Box<dyn Error>> {
+    // Ensure this is the first instance
+    let _global_mut_handle = match aquire_app_lock() {
+        Some(handle) => handle,
+        None => {
+            // Exit now, another instance is already running
+            // Doesn't unwind the stack, fine in this case
+            std::process::exit(1) // Exit status 1 to indicate launch was aborted
+        }
+    };
+
     // Set working directory to location of exe
     if let Ok(exe_path) = std::env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
@@ -485,4 +498,27 @@ fn set_startup_registry(enable_autostart: bool) -> io::Result<()> {
         let _ = key.delete_value(APP_NAME);
     }
     Ok(())
+}
+
+// Attempts to acquire a global lock for the application.
+// Returns handle if successful, or an error if another instance is running.
+fn aquire_app_lock() -> Option<HANDLE> {
+    unsafe {
+        // Global\ prefix is important
+        let mutex_name = w!("Global\\GrebeVolumeMixer_SingleInstance");
+
+        // Attempt to create mutex
+        let handle = match CreateMutexW(None, true, mutex_name) {
+            Ok(h) => h,
+            Err(_) => return None,
+        };
+
+        // Check if mutex was successfully created but already existed
+        if GetLastError() == ERROR_ALREADY_EXISTS {
+            return None;
+        }
+
+        // Return the handle to keep mutex alive for future instances
+        Some(handle)
+    }
 }
