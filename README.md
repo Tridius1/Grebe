@@ -74,3 +74,35 @@ If you prefer to tinker, modify the codebase, or adapt the firmware for differen
 2. Clone the repository.
 3. Navigate to the repository directory.
 4. Use `cargo build --release`
+
+### Building the Microcontroller Application (C++)
+1. Ensure you have the [Arduino IDE](https://www.arduino.cc/en/software/) installed.
+2. Clone the repository.
+3. Navigate to the repository directory.
+4. Open `Grebe/hardware/ESP32_DEVKITV1/ESP32_DEVKITV1.ino` with the Arduino IDE.
+5. In the Arduino IDE open the Library Manager and install the following libraries with dependencies:
+   1. ESP32Encoder by Kevin Harrington
+   2. DIYables TFT Shield by DIYables.io
+6. If you are using an ESP32 modify the DIYables TFT Shield library for use with an ESP32:
+   1. Navigate to `Documents/Arduino/libraries/DIYables_TFT_Shield/src` and open `DIYables_TFT_Shield.h` in your preferred text editor.
+   2. Locate this code snippet, starting on line 17:
+      ```cpp
+      // Control pins
+      #define API_PIN_RD   A0
+      #define API_PIN_WR   A1
+      #define API_PIN_CD   A2
+      #define API_PIN_CS   A3
+      #define API_PIN_RESET  A4
+      ```
+      Replace the above code with the following code.
+      
+      ```cpp
+      // Control pins
+      #define API_PIN_RD   2
+      #define API_PIN_WR   4
+      #define API_PIN_CD   15
+      #define API_PIN_CS   33
+      #define API_PIN_RESET  32
+      ```
+7. Select you board and port in the Arduino IDE. If you are using an ESP32 you will need to add the ESP32 boards manager. Open File -> Preferences and add `https://espressif.github.io/arduino-esp32/package_esp32_index.json` to the `Additional boards manager URLs` field.
+8. Use the Upload button in the Arduino IDE to flash your microcontroller.
