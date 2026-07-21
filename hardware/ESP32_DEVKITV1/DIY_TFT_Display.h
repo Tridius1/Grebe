@@ -20,8 +20,10 @@ struct __attribute__((packed)) DisplayFrame {
     FrameEntry slots[3]; // [0] = Prev, [1] = Curr, [2] = Next
 };
 
+// Linestate struct is used to determine where text has been drawn
+// This allows new frames to be drawn with minimal pixel writes 
 struct LineState {
-  int16_t name_end = 0;
+  int16_t name_end = 0; // Cursor position after drawing the name
   bool muted = false;
   int8_t volume = -1; // -1 means don't draw the %
 };
@@ -41,10 +43,10 @@ class Display {
 
     // Padding
     uint16_t true_top_pad;
-    uint16_t top_pad;
+    uint16_t top_pad; // calculated by cycle_padding() from true_top_pad and pad_cycle
     uint16_t mid_pad; // this is from top of text to top of tex; it does not account for text height
     uint16_t true_side_pad;
-    uint16_t side_pad;
+    uint16_t side_pad; // calculated by cycle_padding() from true_side_pad and pad_cycle
     // Where in the padding cycle we sit; this cycles from 0 to 3
     uint8_t pad_cycle = 0;
 

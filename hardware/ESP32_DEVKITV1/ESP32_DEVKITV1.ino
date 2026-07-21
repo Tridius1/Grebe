@@ -1,46 +1,50 @@
 #include "encoders.h"
 #include "DIY_TFT_Display.h"
 
-#define BUILTIN_LED 2
+// BYTES AGREED BY GREBE DAEMON
+// Header bytes
+#define CMD_HEADER 0xAA // Sent
+#define FRAME_HEADER 0xBB // Received
+#define CONFIG_HEADER 0xCC // Received
+#define ACK_BYTE 0x06 // Sent
+// Command bytes
+#define VOLUP_CMD 0x02 // Sent
+#define VOLDOWN_CMD 0x03 // Sent
+#define NAVUP_CMD 0x04 // Sent
+#define NAVDOWN_CMD 0x05 // Sent
+#define MUTE_CMD 0x10 // Sent
+#define CONFIG_REQ 0x60 // Sent
+// Heartbeat byte
+#define HEARTBEAT 0xEE // Received
 
-#define CMD_HEADER 0xAA
-#define FRAME_HEADER 0xBB
-#define CONFIG_HEADER 0xCC
-#define ACK_BYTE 0x06
-
-#define VOLUP_CMD 0x02
-#define VOLDOWN_CMD 0x03
-#define NAVUP_CMD 0x04
-#define NAVDOWN_CMD 0x05
-#define MUTE_CMD 0x10
-#define CONFIG_REQ 0x60
-
-#define HEARTBEAT 0xEE
-
+// TIMING GLOBALS
 // Wait before resending requests
 unsigned long lastReqTime = 0;
 const unsigned long REQ_COOLDOWN = 100;
-
 // Heartbeats expected every 5 seconds
 unsigned long lastHeartbeatTime = 0;
-
+const unsigned long HEARTBEAT_TIMEOUT = 15000; // 15 seconds = 5 heartbeats
 // Screen saver time check
 unsigned long lastRefreshTime;
 const unsigned long REFRESH_COOLDOWN = 1200000; // milliseconds between screen-saver refreshes (20 minutes)
 
+// OTHER GLOBALS
+Display* LCD = nullptr;
+bool loaded_config = false; // Have we recived a config from PC?
+
+// HELPER FUNCTIONS
+// Attach expected header and send command byte
 void send_cmd_byte(uint8_t cmd) {
   uint8_t packet[2] = {CMD_HEADER, cmd};
   Serial.write(packet, 2);
 }
-
+// Send an acknoledgement
+// Single byte response expected after frames or config data
 void send_ack() {
   Serial.write(ACK_BYTE);
 }
 
-Display* LCD = nullptr;
-
-bool loaded_config; // Have we recived a config from PC?
-
+// CORE FUNCTIONALITY
 void setup() {
   // Light setup
   pinMode(BUILTIN_LED, OUTPUT);
@@ -50,36 +54,25 @@ void setup() {
   // Wait for serial port to connect
   while (!Serial) { ; }
   delay(500);
-  //Serial.println("Ready");
 
   // Setup screen
-  //initScreen();
   LCD = new Display();
 
+  // Setup encoders
   initEncoders();
 
-  loaded_config = false;
-
+  // Init timers
   lastHeartbeatTime = millis();
   lastRefreshTime = millis();
 }
 
 void loop() {
-  unsigned long now = millis();
-  // Check if heartbeats are missing
-  if (now - lastHeartbeatTime >= 15000) {
-    // 15 seconds = 5 missed heartbeats
-    LCD -> show_disconnected();
+  // Check for new serial data
+  if (Serial.available() > 0) {
+    serial_input();
   }
 
-  // Config
-  if (!loaded_config) {
-    if (now - lastReqTime >= REQ_COOLDOWN) {
-      send_cmd_byte(CONFIG_REQ);
-      lastReqTime = now;
-    }
-  }
-
+  // HANDLE INPUTS
   // Volume encoder handling
   int volumeChange = volDelta();
   if (volumeChange != 0) {
@@ -98,32 +91,35 @@ void loop() {
       send_cmd_byte(NAVDOWN_CMD);
     }
   }
-
   // Check for mute button press
   if (muteCheck()) {
     send_cmd_byte(MUTE_CMD);
   }
 
-  // check if new serial data
-  if (Serial.available() > 0) {
-    serial_input();
+  // TIME BASED EVENTS
+  unsigned long now = millis();
+  // Request config if not yet loaded
+  if (!loaded_config) {
+    if (now - lastReqTime >= REQ_COOLDOWN) {
+      send_cmd_byte(CONFIG_REQ);
+      lastReqTime = now;
+    }
   }
-
+  // Check if heartbeats are missing
+  if (now - lastHeartbeatTime >= HEARTBEAT_TIMEOUT) {
+    LCD -> show_disconnected();
+  }
   // Screen-saver check
   if (now - lastRefreshTime >= REFRESH_COOLDOWN) {
     LCD -> refresh_sweep();
     lastRefreshTime = millis();
   }
-
-  delay(1);
 }
 
-
-
-// Called whenever a character arrives from the serial port
+// Called whenever data arrives at the serial port
 void serial_input() {
-
   char incomingByte = Serial.read();
+
   switch (incomingByte) {
     case FRAME_HEADER:
       // New frame
@@ -149,11 +145,13 @@ void serial_input() {
       loaded_config = true;
       break;
     case HEARTBEAT:
+      // If in a disconnected state, update to show connection
       if (LCD -> get_dc() == false) {
         LCD -> render_frame();
       }
       break;
     default:
+      // If incomming byte not recognized return before setting lastHeartbeatTime
       return;
   }
   // Any known signal counts as a heartbeat

@@ -2,15 +2,15 @@
 #include <ESP32Encoder.h>
 
 // Encoder 1: Volume Controller Pins
-const int VOL_A = 18;
-const int VOL_B  = 19;
+#define VOL_A 18
+#define VOL_B 19
 
 // Encoder 2: Navigation Pins
-const int NAV_A = 23;
-const int NAV_B  = 22;
+#define NAV_A 23
+#define NAV_B 22
 
 // Mute button pin
-const int MUTE_PIN = 13;
+#define MUTE_PIN 13
 
 // Encoder objects
 ESP32Encoder volEncoder;

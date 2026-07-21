@@ -1,13 +1,12 @@
-
 #include <Arduino.h>
 #include "DIY_TFT_Display.h"
 
 #define LINE_GAP 8 // pixels between lines of text (top to top)
 
-// Initialize display with custom ESP32 pin configuration; TODO: Get this from config
+// Initialize display with custom ESP32 pin configuration
 // Pins used: D0=17, D1=16, D2=26, D3=25, D4=21, D5=5, D6=27, D7=14, RD=2, WR=4, CD/DC=15, CS=33, RST=32
 Display::Display() : lcd (17, 16, 26, 25, 21, 5, 27, 14, 2, 4, 15, 33, 32) {
-  // init settings to defaults
+  // Init settings to defaults
   rotation = 1;
   text_size = 3;
   text_color = 0xFFFF;
@@ -60,12 +59,15 @@ void Display::cycle_padding() {
   }
 }
 
+// Draws the background color and selection box
+// Boolean parameter determines if background is redrawn, true by default
 void Display::backdrop(bool fill_bk) {
   lcd.setRotation(rotation);
   if (fill_bk) {lcd.fillScreen(bk_color);}
   lcd.setTextColor(text_color, bk_color);
   lcd.setTextSize(text_size);
-  // Draw selection box
+  // Draw selection box based on padding
+  // This means the box moves when the padding changes, preventing burn-in
   int box_top = ((top_pad * 2) + mid_pad + (text_size * 16)) / 2;
   int box_bot = ((top_pad * 2) + (mid_pad * 3) + (text_size * 16)) / 2;
   lcd.drawRoundRect(
@@ -77,6 +79,7 @@ void Display::backdrop(bool fill_bk) {
     text_color);
 }
 
+// Public function setting the current frame to be drawn
 void Display::set_frame(DisplayFrame frame) {
   current_frame = frame;
   frame_exist = true;
@@ -84,25 +87,25 @@ void Display::set_frame(DisplayFrame frame) {
 
 // Render the current frame to the display
 // Uses LineState structs to only overwrite necessary pixels
+// render_all parameter indicates that text that was drawn on the last frame should be redrawn
 void Display::render_frame(bool render_all) {
   if (!frame_exist) {return;} // Abort if no frame exists
-
+  // If a disconnect message was shown all text must be redrawn this frame
   bool force = render_all || dc_shown;
-
-  int text_height = 8 * text_size;
-  int text_width = 6 * text_size;
 
   // Clear disconnected message if needed
   clear_disconnected();
 
-  char buffer[text_len + 1] = {};
+  int text_height = 8 * text_size;
+  int text_width = 6 * text_size;
+
   for (int i = 0; i < 3; i++) {
+    // Cursor y-axis position for app name
     int y_pos = top_pad + (i * mid_pad);
-    // Name
-    snprintf(buffer, sizeof(buffer), "%s", current_frame.slots[i].name);
+    // Draw name
     lcd.setCursor(side_pad, y_pos);
-    lcd.print(buffer);
-    // Clear rest of name space if needed
+    lcd.print(current_frame.slots[i].name);
+    // Clear text from the last frame if it was not overdrawn already
     int cursor_x = lcd.getCursorX();
     if (cursor_x < frame_state[i].name_end) {
       lcd.fillRect(
@@ -113,11 +116,10 @@ void Display::render_frame(bool render_all) {
         bk_color
       );
     }
-    frame_state[i].name_end = cursor_x; // set frame state
+    // Remember cursor position for next frame rendering
+    frame_state[i].name_end = cursor_x; 
 
-    // Info
-    
-    // If mute state changed or rendering all
+    // Draw or clear muted indicator
     if (frame_state[i].muted != current_frame.slots[i].muted || force) {
       if (current_frame.slots[i].muted) {
         lcd.setCursor(side_pad + 8, y_pos + text_height + 6);
@@ -133,14 +135,16 @@ void Display::render_frame(bool render_all) {
           bk_color
         );
       }
+      // Remember the mute state for next frame rendering
       frame_state[i].muted = current_frame.slots[i].muted;
     }
     
-    int volume_state = (current_frame.slots[i].name[0] == '\0') ? -1 : current_frame.slots[i].volume; // negate state means do not draw
-    // if volume changed or rendering all 
+    // The volume value (0 - 100) or -1 if it should not be drawn (there is no app in this slot)
+    int volume_state = (current_frame.slots[i].name[0] == '\0') ? -1 : current_frame.slots[i].volume; // negative state means do not draw
+    // Drawing the volume if it has changed
     if (frame_state[i].volume != volume_state || force) {
       if (volume_state < 0) {
-        // Clear old volume
+        // Clear the volume area as it should not be drawn (negative state)
         lcd.fillRect(
           lcd.width() - side_pad - (4 * text_width), 
           y_pos + text_height, 
@@ -153,6 +157,7 @@ void Display::render_frame(bool render_all) {
         lcd.setCursor(lcd.width() - side_pad - (4 * text_width), y_pos + text_height);
         lcd.printf("%3i%%", current_frame.slots[i].volume);
       }
+      // Remember the volume state for next frame rendering
       frame_state[i].volume = volume_state;
     }
     
@@ -162,37 +167,36 @@ void Display::render_frame(bool render_all) {
 // Write to the display to show that the device is not connected
 void Display::show_disconnected() {
   if (dc_shown) {return;} // Sort circut if already shown
-  backdrop(); // Clear any existing frame
+
   constexpr char* text = "NOT CONNECTED"; // 13 chars
-  lcd.fillRect(
-    (lcd.width() / 2) - (39 * text_size) - 20,
-    (lcd.height() / 2) - (4 * text_size) - 20,
-    13 * 6 * text_size + 40,
-    9 * text_size + 40,
-    bk_color
-  );
+  backdrop(); // Clear any existing frame
+
+  // Draw message ~centered within selection box
   lcd.setCursor(
-    (lcd.width() / 2) - (39 * text_size),
-    (lcd.height() / 2) - (4 * text_size)
+    ((lcd.width() - (side_pad / 3)) / 2) - (39 * text_size),
+    top_pad + mid_pad + (4 * text_size)
   );
   lcd.print(text);
+
   dc_shown = true;
 }
 
 // Clear disconnected message
 void Display::clear_disconnected() {
   if (!dc_shown) {return;} // Sort circut if already clear
+  // Overwrite message with background color
   lcd.fillRect(
-    (lcd.width() / 2) - (39 * text_size),
-    (lcd.height() / 2) - (4 * text_size),
+    ((lcd.width() - (side_pad / 3)) / 2) - (39 * text_size),
+    top_pad + mid_pad + (4 * text_size),
     13 * 6 * text_size,
     9 * text_size,
     bk_color
   );
+  
   dc_shown = false;
 }
 
-// Get disconnection status
+// Get disconnection status (var is private but may be read)
 bool Display::get_dc() {
   return dc_shown;
 }
@@ -214,7 +218,7 @@ void Display::apply_settings(DisplayConfig config) {
     stored.putUShort("bk_color", bk_color);
     stored.end();
 
-    // Redo backdrop
+    // Redo backdrop with new settings
     backdrop();
   }
 }
@@ -223,6 +227,8 @@ void Display::apply_settings(DisplayConfig config) {
 void Display::refresh_sweep() {
   uint16_t h = lcd.height();
   uint16_t w = lcd.width();
+
+  // Sweep the screen with inverted colors
   for (uint16_t i = 0; i < h + 30; i++) {
     int16_t ibk_line = i;
     int16_t icolor_line = i - 15;
@@ -230,12 +236,12 @@ void Display::refresh_sweep() {
     if (ibk_line >= 0 && ibk_line < h) {lcd.writeFastHLine(0, ibk_line, w, ~bk_color);} // invert bk color
     if (icolor_line >= 0 && icolor_line < h) {lcd.writeFastHLine(0, icolor_line, w, ~text_color);} // invert text color
     if (bk_line >= 0 && bk_line < h) {lcd.writeFastHLine(0, bk_line, w, bk_color);} // restore bk color
-    //delayMicroseconds(500);
   }
-  cycle_padding(); // Draw in a slightly different place
-  // ensure last state is resumed
+  // Change padding so elements are drawn in a slightly different place
+  cycle_padding(); 
+  // Ensure last state is resumed
   if (dc_shown) {
-    dc_shown = false;
+    dc_shown = false; // Needed to force dc message to be redrawn
     show_disconnected();
   } else {
     backdrop(false);
