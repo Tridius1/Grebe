@@ -21,7 +21,7 @@ fn get_process_name(pid: u32) -> String {
         let process_handle = match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
                 Ok(h) => h,
                 Err(e) => {
-                    error!("[Audio Subsystem] Error opening process handle: {:?}", e);
+                    error!("[Audio Subsystem] Error opening process handle for PID {}: {:?}", pid, e);
                     return "Unknown".to_string()
             }
             };
@@ -64,7 +64,7 @@ fn get_process_name(pid: u32) -> String {
         let info_size = GetFileVersionInfoSizeW(PCWSTR::from_raw(path_wide.as_ptr()), Some(&mut zero));
         if info_size == 0 {
             // 0 size represents an error
-            error!("[Audio Subsystem] Error getting file info size, will return executable name");
+            error!("[Audio Subsystem] Error getting file info size, will return executable filename: {}", name);
             return name; 
         } 
 
@@ -189,7 +189,10 @@ impl AudioStateManager {
         if name == "Unknown" { return Ok(()) } // Ignore apps with unknown names, usually don't want them
 
         // check name against blacklist
-        if self.blacklist.contains(&name) {return Ok(());}
+        if self.blacklist.contains(&name) {
+            debug!("Ignoring blacklisted application: {}", name);
+            return Ok(());
+        }
 
         // prevent repeated entries
         if self.sessions.contains_key(&pid) { return Ok(()); }
