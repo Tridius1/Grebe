@@ -56,6 +56,7 @@ Grebe is a completely portable application—no traditional installers required.
 9. Ensure the Grebe daemon is not running. It can be found and closed in the system tray.
 10. Flash the microcontroller. Use the following command, but replace `COM#` with the COM port you identified in step 5.
       Ensure you execute this command in the folder containing the the compiled `.bin` file downloaded in step 1.
+    
     ```bash
     py -m esptool --chip esp32 --port COM# --baud 921600 write-flash 0x0 .\Grebe_ESP32_Firmware.bin
      ```
