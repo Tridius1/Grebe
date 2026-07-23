@@ -34,8 +34,8 @@ fn get_process_name(pid: u32) -> String {
         let result = QueryFullProcessImageNameW(
             process_handle,
             PROCESS_NAME_WIN32, // Specifies format as C:\... style path
-            PWSTR::from_raw(path_buffer.as_mut_ptr()),
-            &mut path_size
+            PWSTR::from_raw(path_buffer.as_mut_ptr()), // Set to buffer to path
+            &mut path_size // Set to size of path
         );
 
         // Close handle and unwrap
@@ -58,7 +58,7 @@ fn get_process_name(pid: u32) -> String {
 
         // Convert path to wide windows path
         let path_wide: Vec<u16> = exe_path.encode_utf16().chain(std::iter::once(0)).collect();
-        let mut zero = 0; // Unused but requred by GetFileVersionInfoSizeW (legacy nonsense)
+        let mut zero = 0; // Unused but requred by GetFileVersionInfoSizeW (legacy)
 
         // Get the size of the version info (need to alocate buffer)
         let info_size = GetFileVersionInfoSizeW(PCWSTR::from_raw(path_wide.as_ptr()), Some(&mut zero));
@@ -71,6 +71,7 @@ fn get_process_name(pid: u32) -> String {
         // 2. Allocate buffer and get info
         let mut info_buffer = vec![0u8; info_size as usize];
         if GetFileVersionInfoW(PCWSTR::from_raw(path_wide.as_ptr()), 0, info_size, info_buffer.as_mut_ptr() as *mut _).is_ok() {
+            // If file version info was fetched sucessfully
             // Query the "FileDescription" translation block ; 040904B0 is english
             // TODO: Query translation list first for non-english languages
             let subblock = "\\StringFileInfo\\040904B0\\FileDescription\0".encode_utf16().collect::<Vec<u16>>();
