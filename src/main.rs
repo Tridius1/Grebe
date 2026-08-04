@@ -412,6 +412,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     log_builder.filter_level(log::LevelFilter::Debug).init();
 
+    // Send panic to log file
+    std::panic::set_hook(Box::new(|panic_info| {
+        log::error!("CRITICAL PANIC: {}", panic_info);
+    }));
+
     // Init global config
     config::init();
     let cfg = config::get();
