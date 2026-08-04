@@ -122,13 +122,19 @@ impl MixerManager {
         u_volume as f32 / 100.0
     }
 
-    pub fn frame(&self) -> DisplayFrame {
+    pub fn frame(&mut self) -> DisplayFrame {
         if self.count == 0 { // easy out if no apps open
             return DisplayFrame::new(None, None, None)
         }
         // manage index -> key (pid)
-        let keys: Vec<u32> = self.apps.keys().cloned().collect();
+        let keys: Vec<u32> = self.apps.keys().cloned().collect(); // We will need this vec for next and prev
+        // Ensure selected is Some
+        if self.apps.get(&keys[self.selected_index]).is_none() {
+            // If selected is None, set index to 0; guaranteed to exist if self.count == 0
+            self.selected_index = 0;
+        }
         let selected_key = keys[self.selected_index];
+
         if self.count == 1 {
             return DisplayFrame::new(None, self.apps.get(&selected_key), None)
         }
