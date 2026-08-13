@@ -219,7 +219,7 @@ pub struct DisplayFrame {
 impl DisplayFrame {
     fn new (prev: Option<&VolumeStatus>, curr: Option<&VolumeStatus>, next: Option<&VolumeStatus>) -> Self {
         if curr.is_none() {
-            if prev.is_none() || next.is_none() {
+            if prev.is_some() || next.is_some() {
                 // this state represents a logic error; curr should be Some unless there are no apps
                 panic!("DisplayFrame.from_VolumeStatus called with no current, but some prev or next. ");
             }
