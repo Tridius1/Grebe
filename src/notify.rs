@@ -19,8 +19,12 @@ pub const APP_ID_H: &'static HSTRING = h!("Grebe.HardwareVolumeMixer"); // HSTRR
 
 // Send a windows notification
 pub fn send_notification(title: &str, message: &str) -> Result<()> {
+    debug!("[Notifications] New notification: {} : {}", title, message);
 	// Abort if adding app to start menu is disabled
-	if !config::get().add_to_start { return Ok(()); }
+	if !config::get().add_to_start {
+        debug!("[Notifications] Not added to start; aborting notification");
+        return Ok(());
+    }
 
     // Define the Toast template XML template string
     let xml_string = format!(
@@ -67,7 +71,7 @@ pub fn send_notification(title: &str, message: &str) -> Result<()> {
 pub fn ensure_shortcut() {
     // Full absolute path to running exe
     let exe_path = match std::env::current_exe() {
-    	Ok(prop_store) => prop_store,
+    	Ok(path) => path,
         Err(err) => {
         	error!("[Notifications] Failed to get path to current executable: {:?}", err);
         	return;
@@ -88,8 +92,9 @@ pub fn ensure_shortcut() {
     shortcut_path.push("Grebe.lnk");
 
     if shortcut_path.exists() {
-    	debug!("[Notifications] Shortcut already exists in Start Menu\\Programs");
-    	return;
+    	debug!("[Notifications] Shortcut already exists in Start Menu\\Programs. Removing to ensure sortcut is correct.");
+        // This is needed in the case that the Grebe exe was moved
+    	let _ = std::fs::remove_file(&shortcut_path);
     }
 
     // Convert strings to windows style wide strings
@@ -110,10 +115,10 @@ pub fn ensure_shortcut() {
         };
         
         // Set shortcut path
-        let _ = shell_link.SetPath(PCWSTR::from_raw(exe_wide.as_ptr())).inspect_err( |err| {
+        if let Err(err) = shell_link.SetPath(PCWSTR::from_raw(exe_wide.as_ptr())) {
 	        error!("[Notifications] Failed set shortcut path: {:?}", err);
 	        return;
-	    });
+	    }
 
 	    let property_store: IPropertyStore = match shell_link.cast() {
         	Ok(sh_lnk) => sh_lnk,
@@ -127,20 +132,20 @@ pub fn ensure_shortcut() {
 		let prop_variant = PROPVARIANT::from(APP_ID);
 
 		// Write it to the shortcut's property store
-		let _ = property_store.SetValue(&PKEY_AppUserModel_ID, &prop_variant).inspect_err( |err| {
+		if let Err(err) = property_store.SetValue(&PKEY_AppUserModel_ID, &prop_variant) {
 	        error!("[Notifications] TODO: {:?}", err);
 	        return;
-	    });
+	    }
         
         // Write the App ID shortcut's metadata
-        let _ = property_store.SetValue(&PKEY_AppUserModel_ID, &prop_variant).inspect_err( |err| {
+        if let Err(err) = property_store.SetValue(&PKEY_AppUserModel_ID, &prop_variant) {
 	        error!("[Notifications] Failed set App ID: {:?}", err);
 	        return;
-	    });
-        let _ = property_store.Commit().inspect_err( |err| {
+	    }
+        if let Err(err) = property_store.Commit() {
 	        error!("[Notifications] Failed commit metadata: {:?}", err);
 	        return;
-	    });
+	    }
 
         // Cast to IPersistFile to save the link to the disk
         let persist_file: IPersistFile = match shell_link.cast() {
@@ -152,12 +157,12 @@ pub fn ensure_shortcut() {
 	    };
         
         // Save shortcut file to disk
-        let _ = persist_file.Save(PCWSTR::from_raw(save_path_wide.as_ptr()), true).inspect_err( |err| {
+        if let Err(err) = persist_file.Save(PCWSTR::from_raw(save_path_wide.as_ptr()), true) {
 	        error!("[Notifications] Failed to save shortcut to disk: {:?}", err);
 	        return;
-	    });
+	    }
     }
-    debug!("Shortcut added to Start Menu\\Programs");
+    debug!("[Notifications] Shortcut added to Start Menu\\Programs");
 
 }
 
