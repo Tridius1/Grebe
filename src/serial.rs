@@ -54,7 +54,7 @@ pub enum ControlMsg {
 
 // Internal messeges (sent between serial subsystem and reader/writer threads)
 #[derive(Debug, Clone, Copy)]
-enum SerialRecieved {
+enum SerialReceived {
 	Acknowledge,
 	VolUp,
 	VolDown,
@@ -70,8 +70,8 @@ fn serial_subsystem(port: Box<dyn SerialPort>, to_coordinator: Sender<ControlMsg
 
 	// Create interal channels
 	let (writer_packets_tx, writer_packets_rx) = crossbeam_channel::unbounded::<Packet>();
-	let (writer_ack_tx, writer_ack_rx) = crossbeam_channel::unbounded::<SerialRecieved>();
-	let (reader_tx, reader_rx) = crossbeam_channel::unbounded::<SerialRecieved>();
+	let (writer_ack_tx, writer_ack_rx) = crossbeam_channel::unbounded::<SerialReceived>();
+	let (reader_tx, reader_rx) = crossbeam_channel::unbounded::<SerialReceived>();
 
 	// Allow microcontroller time to start up
 	std::thread::sleep(Duration::from_secs(2));
@@ -105,14 +105,14 @@ fn serial_subsystem(port: Box<dyn SerialPort>, to_coordinator: Sender<ControlMsg
 				match msg {
 					Ok(received) => {
 						match received {
-							SerialRecieved::Acknowledge => { let _ = writer_ack_tx.send(received); }
-							SerialRecieved::Error(b) => { info!("[Serial Subsystem] Unknown command byte:{:#X?}", b); }
-							SerialRecieved::VolUp => { let _ = to_coordinator.send(ControlMsg::VolumeScroll { up: true }); }
-							SerialRecieved::VolDown => { let _ = to_coordinator.send(ControlMsg::VolumeScroll { up: false }); }
-							SerialRecieved::NavUp => { let _ = to_coordinator.send(ControlMsg::AppScroll { up: true }); }
-							SerialRecieved::NavDown => { let _ = to_coordinator.send(ControlMsg::AppScroll { up: false }); }
-							SerialRecieved::MuteToggle => { let _ = to_coordinator.send(ControlMsg::MuteToggle); }
-							SerialRecieved::RequestConfig => {
+							SerialReceived::Acknowledge => { let _ = writer_ack_tx.send(received); }
+							SerialReceived::Error(b) => { info!("[Serial Subsystem] Unknown command byte:{:#X?}", b); }
+							SerialReceived::VolUp => { let _ = to_coordinator.send(ControlMsg::VolumeScroll { up: true }); }
+							SerialReceived::VolDown => { let _ = to_coordinator.send(ControlMsg::VolumeScroll { up: false }); }
+							SerialReceived::NavUp => { let _ = to_coordinator.send(ControlMsg::AppScroll { up: true }); }
+							SerialReceived::NavDown => { let _ = to_coordinator.send(ControlMsg::AppScroll { up: false }); }
+							SerialReceived::MuteToggle => { let _ = to_coordinator.send(ControlMsg::MuteToggle); }
+							SerialReceived::RequestConfig => {
 								debug!("[Serial Subsystem] Config requested by microcontroller.");
 								let config_packet = config::get().display.to_packet();
 								let _ = writer_packets_tx.send(config_packet);
@@ -189,7 +189,7 @@ pub fn run_serial_subsystem(to_coordinator: Sender<ControlMsg>, from_coordinator
 }
 
 
-fn serial_reader(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, reader_tx: Sender<SerialRecieved>) {
+fn serial_reader(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, reader_tx: Sender<SerialReceived>) {
 	// Watchdog for usb-to-serial driver crash (from hot unplugging)
 	let mut consecutive_unknown_bytes = 0;
 
@@ -213,11 +213,13 @@ fn serial_reader(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, r
 				// match byte to headers
 				match single_byte_buf[0] {
 					ACK_BYTE => {
-						let _ = reader_tx.send(SerialRecieved::Acknowledge);
+						consecutive_unknown_bytes = 0; // Reset counter
+						let _ = reader_tx.send(SerialReceived::Acknowledge);
 					}
 					COMMAND_HEADER => {
+						consecutive_unknown_bytes = 0; // Reset counter
 						while running_flag.load(Ordering::Relaxed) {
-							let mut payload = [0u8, 1];
+							let mut payload = [0u8; 1];
 							match port.read(&mut payload) {
 								Ok(0) => debug!("[Serial Reader] Device disconnected (EOF)."),
 								Ok(1) => {
@@ -259,7 +261,7 @@ fn serial_reader(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, r
 }
 
 
-fn serial_writer(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, packets_rx: Receiver<Packet>, ack_rx: Receiver<SerialRecieved>) {
+fn serial_writer(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, packets_rx: Receiver<Packet>, ack_rx: Receiver<SerialReceived>) {
 	let mut packet: Option<Packet> = None;
 	let mut next_packet: Option<Packet> = None;
 	let mut attempt: u8 = 0;
@@ -278,7 +280,7 @@ fn serial_writer(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, p
 			// We have a packet, send it if it's not too soon
 			if packet_timer.elapsed() >= Duration::from_millis(10) {
 				// Call OS to send packet over USB
-				if port.write_all(packet.clone().expect("[Serial Writer] Packet.expect failed while is_some()").as_ref()).is_err() {
+				if port.write_all(packet.as_ref().expect("[Serial Writer] Packet.expect failed while is_some()").as_ref()).is_err() {
 	    			debug!("[Serial Writer] Could not write to serial port.");
 	    			break;
 				}
@@ -349,28 +351,14 @@ fn serial_writer(running_flag: Arc<AtomicBool>, mut port: Box<dyn SerialPort>, p
 }
 
 
-fn read_command(cmd_byte: u8) -> SerialRecieved {
+fn read_command(cmd_byte: u8) -> SerialReceived {
 	match cmd_byte {
-		VOLUP_CMD => {
-			return SerialRecieved::VolUp
-		}
-		VOLDOWN_CMD => {
-			return SerialRecieved::VolDown
-		}
-		NAVUP_CMD => {
-			return SerialRecieved::NavUp
-		}
-		NAVDOWN_CMD => {
-			return SerialRecieved::NavDown
-		}
-		MUTE_CMD => {
-			return SerialRecieved::MuteToggle
-		}
-		CONFIG_REQ => {
-			return SerialRecieved::RequestConfig
-		}
-	    b => {
-	    	return SerialRecieved::Error(b)
-	    }
+		VOLUP_CMD => SerialReceived::VolUp,
+		VOLDOWN_CMD => SerialReceived::VolDown,
+		NAVUP_CMD => SerialReceived::NavUp,
+		NAVDOWN_CMD => SerialReceived::NavDown,
+		MUTE_CMD => SerialReceived::MuteToggle,
+		CONFIG_REQ => SerialReceived::RequestConfig,
+	    b => SerialReceived::Error(b),
 	}
 }
