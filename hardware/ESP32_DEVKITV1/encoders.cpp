@@ -25,7 +25,7 @@ int lastButtonState = HIGH;
 unsigned long lastVolTime = 0;
 unsigned long lastNavTime = 0;
 unsigned long lastMuteTime = 0;
-const unsigned long DEBOUNCE_DELAY = 30;
+const unsigned long DEBOUNCE_DELAY = 10;
 
 
 void initEncoders() {
