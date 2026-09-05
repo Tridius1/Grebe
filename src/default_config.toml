@@ -6,13 +6,13 @@
 port = "COM3"
 
 # Add the name of any process you wish to be hidden
-blacklist = ["Steam Client WebHelper", "SpotifyWidgetProvider", "GameBar", "DiscordHookHelper"]
+blacklist = ["steam", "SpotifyWidgetProvider", "GameBar", "DiscordHookHelper"]
 
 # Aliases allow displayed names of applications to differ from the name provided by Windows
 # To use a preferred name add to this list in the form ["default name", "preferred name"]
 aliases = [
-	["chrome", "Google Chrome"],
 	["firefox", "Firefox"],
+	["Steam Client WebHelper", "Steam"]
 ]
 
 # Run Grebe on Windows startup
