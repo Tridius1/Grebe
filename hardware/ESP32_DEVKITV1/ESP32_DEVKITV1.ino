@@ -14,13 +14,14 @@
 #define NAVDOWN_CMD 0x05 // Sent
 #define MUTE_CMD 0x10 // Sent
 #define CONFIG_REQ 0x60 // Sent
+#define FRAME_REQ 0x63 // Sent
 // Heartbeat byte
 #define HEARTBEAT 0xEE // Received
 
 // TIMING GLOBALS
 // Wait before resending requests
 unsigned long lastReqTime = 0;
-const unsigned long REQ_COOLDOWN = 100;
+const unsigned long REQ_COOLDOWN = 250;
 // Heartbeats expected every 5 seconds
 unsigned long lastHeartbeatTime = 0;
 const unsigned long HEARTBEAT_TIMEOUT = 15000; // 15 seconds = 5 heartbeats
@@ -108,6 +109,11 @@ void loop() {
   // Check if heartbeats are missing
   if (now - lastHeartbeatTime >= HEARTBEAT_TIMEOUT) {
     LCD -> show_disconnected();
+  } else {
+    if (LCD -> get_dc() && now - lastReqTime >= REQ_COOLDOWN) {
+      send_cmd_byte(FRAME_REQ);
+      lastReqTime = now;
+    }
   }
   // Screen-saver check
   if (now - lastRefreshTime >= REFRESH_COOLDOWN) {

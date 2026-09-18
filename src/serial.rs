@@ -23,6 +23,7 @@ const NAVUP_CMD: u8 = 0x04;
 const NAVDOWN_CMD: u8 = 0x05;
 const MUTE_CMD: u8 = 0x10;
 const CONFIG_REQ: u8 = 0x60;
+const FRAME_REQ: u8 = 0x63;
 
 // Heartbeat byte
 const HEARTBEAT: u8 = 0xEE;
@@ -62,6 +63,7 @@ enum SerialReceived {
 	NavDown,
 	MuteToggle,
 	RequestConfig,
+	RequestFrame,
 	Error(u8)
 }
 
@@ -112,6 +114,7 @@ fn serial_subsystem(port: Box<dyn SerialPort>, to_coordinator: Sender<ControlMsg
 							SerialReceived::NavUp => { let _ = to_coordinator.send(ControlMsg::AppScroll { up: true }); }
 							SerialReceived::NavDown => { let _ = to_coordinator.send(ControlMsg::AppScroll { up: false }); }
 							SerialReceived::MuteToggle => { let _ = to_coordinator.send(ControlMsg::MuteToggle); }
+							SerialReceived::RequestFrame => { let _ = to_coordinator.send(ControlMsg::RequestFrame); }
 							SerialReceived::RequestConfig => {
 								debug!("[Serial Subsystem] Config requested by microcontroller.");
 								let config_packet = config::get().display.to_packet();
@@ -359,6 +362,7 @@ fn read_command(cmd_byte: u8) -> SerialReceived {
 		NAVDOWN_CMD => SerialReceived::NavDown,
 		MUTE_CMD => SerialReceived::MuteToggle,
 		CONFIG_REQ => SerialReceived::RequestConfig,
+		FRAME_REQ => SerialReceived::RequestFrame,
 	    b => SerialReceived::Error(b),
 	}
 }
